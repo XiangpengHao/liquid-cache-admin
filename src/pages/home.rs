@@ -54,8 +54,7 @@ where
     use send_wrapper::SendWrapper;
 
     SendWrapper::new(async move {
-        let abort_controller =
-            SendWrapper::new(web_sys::AbortController::new().ok());
+        let abort_controller = SendWrapper::new(web_sys::AbortController::new().ok());
         let abort_signal = abort_controller.as_ref().map(|a| a.signal());
 
         // abort in-flight requests if, e.g., we've navigated away from this page
@@ -104,11 +103,9 @@ pub fn Home() -> impl IntoView {
         let address = server_address.get();
         set_loading.set(true);
         set_error.set(None);
-        
+
         async move {
-            match fetch_api::<TablesResponse>(&format!("{}/get_registered_tables", address))
-                .await
-            {
+            match fetch_api::<TablesResponse>(&format!("{}/get_registered_tables", address)).await {
                 Ok(response) => {
                     set_tables.set(Some(response.tables));
                     set_error.set(None);
@@ -125,10 +122,9 @@ pub fn Home() -> impl IntoView {
         let address = server_address.get();
         set_loading.set(true);
         set_error.set(None);
-        
+
         async move {
-            match fetch_api::<ParquetCacheUsage>(&format!("{}/parquet_cache_usage", address))
-                .await
+            match fetch_api::<ParquetCacheUsage>(&format!("{}/parquet_cache_usage", address)).await
             {
                 Ok(response) => {
                     set_cache_usage.set(Some(response));
@@ -146,11 +142,9 @@ pub fn Home() -> impl IntoView {
         let address = server_address.get();
         set_loading.set(true);
         set_error.set(None);
-        
+
         async move {
-            match fetch_api::<CacheInfo>(&format!("{}/cache_info", address))
-                .await
-            {
+            match fetch_api::<CacheInfo>(&format!("{}/cache_info", address)).await {
                 Ok(response) => {
                     logging::log!("Cache info: {:?}", response);
                     set_cache_info.set(Some(response));
@@ -169,11 +163,9 @@ pub fn Home() -> impl IntoView {
         let address = server_address.get();
         set_loading.set(true);
         set_error.set(None);
-        
+
         async move {
-            match fetch_api::<SystemInfo>(&format!("{}/system_info", address))
-                .await
-            {
+            match fetch_api::<SystemInfo>(&format!("{}/system_info", address)).await {
                 Ok(response) => {
                     set_system_info.set(Some(response));
                     set_error.set(None);
@@ -191,11 +183,9 @@ pub fn Home() -> impl IntoView {
         set_loading.set(true);
         set_error.set(None);
         set_success_message.set(None);
-        
+
         async move {
-            match fetch_api::<ApiResponse>(&format!("{}/reset_cache", address))
-                .await
-            {
+            match fetch_api::<ApiResponse>(&format!("{}/reset_cache", address)).await {
                 Ok(response) => {
                     set_success_message.set(Some(response.message));
                 }
@@ -212,11 +202,9 @@ pub fn Home() -> impl IntoView {
         set_loading.set(true);
         set_error.set(None);
         set_success_message.set(None);
-        
+
         async move {
-            match fetch_api::<ApiResponse>(&format!("{}/shutdown", address))
-                .await
-            {
+            match fetch_api::<ApiResponse>(&format!("{}/shutdown", address)).await {
                 Ok(response) => {
                     set_success_message.set(Some(response.message));
                 }
