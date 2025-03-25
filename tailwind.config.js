@@ -7,7 +7,14 @@ module.exports = {
 		},
 	},
 	theme: {
-		extend: {},
+		extend: {
+			colors: {
+				primary: '#4a5568',
+			},
+			fontFamily: {
+				sans: ['JetBrains Mono', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', 'monospace'],
+			},
+		},
 	},
 	plugins: [],
 }

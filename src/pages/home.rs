@@ -37,7 +37,6 @@ struct CacheInfo {
 struct SystemInfo {
     total_memory_bytes: u64,
     used_memory_bytes: u64,
-    available_memory_bytes: u64,
     name: String,
     kernel: String,
     os: String,
@@ -239,10 +238,8 @@ pub fn Home() -> impl IntoView {
     view! {
         <ErrorBoundary fallback=|errors| {
             view! {
-                <h1>"Uh oh! Something went wrong!"</h1>
-
-                <p>"Errors: "</p>
-                <ul>
+                <h1 class="text-2xl text-gray-700 mb-4">"Something went wrong"</h1>
+                <ul class="text-sm text-gray-600">
                     {move || {
                         errors
                             .get()
@@ -253,9 +250,9 @@ pub fn Home() -> impl IntoView {
                 </ul>
             }
         }>
-            <div class="container mx-auto px-4 py-8 max-w-5xl">
-                <h1 class="text-3xl font-bold text-blue-800 mb-6 text-center">
-                    "LiquidCache Server Monitor"
+            <div class="container mx-auto px-4 py-8 max-w-4xl bg-gray-50 min-h-screen">
+                <h1 class="text-2xl font-medium text-gray-800 mb-8 border-b border-gray-200 pb-3">
+                    "LiquidCache Monitor"
                 </h1>
 
                 {move || {
@@ -263,7 +260,7 @@ pub fn Home() -> impl IntoView {
                         .get()
                         .map(|err| {
                             view! {
-                                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                                <div class="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded mb-6 text-sm">
                                     <p>{err}</p>
                                 </div>
                             }
@@ -275,45 +272,42 @@ pub fn Home() -> impl IntoView {
                         .get()
                         .map(|msg| {
                             view! {
-                                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+                                <div class="bg-green-50 border border-green-100 text-green-600 px-4 py-3 rounded mb-6 text-sm">
                                     <p>{msg}</p>
                                 </div>
                             }
                         })
                 }}
 
-                <div class="bg-white shadow-md rounded-lg p-6 mb-6">
-                    <h2 class="text-xl font-semibold text-blue-700 mb-4">"Server Connection"</h2>
-                    <div class="flex items-center space-x-2">
+                <div class="mb-8">
+                    <div class="flex items-center space-x-2 mb-4">
                         <input
                             type="text"
-                            placeholder="Server address (e.g. http://localhost:3000)"
-                            class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Server address"
+                            class="flex-1 px-3 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
                             prop:value=server_address
                             on:input=move |ev| {
                                 set_server_address.set(event_target_value(&ev));
                             }
                         />
                         <button
-                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition-colors"
+                            class="px-4 py-2 border border-gray-200 rounded text-gray-700 hover:bg-gray-100 transition-colors text-sm"
                             on:click=fetch_all_data
                             disabled=loading
                         >
-                            {move || if loading.get() { "Loading..." } else { "Connect" }}
+                            {move || if loading.get() { "Connecting..." } else { "Connect" }}
                         </button>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                    <div class="bg-white shadow-md rounded-lg p-6">
+                <div class="space-y-6 mb-8">
+                    <div class="border border-gray-200 rounded-lg bg-white p-6">
                         <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-xl font-semibold text-blue-700">
-                                "System Information"
-                            </h2>
+                            <h2 class="text-lg font-medium text-gray-700">"System Information"</h2>
                             <button
-                                class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-2 py-1 rounded transition-colors text-sm"
+                                class="text-xs text-gray-500 hover:text-gray-700"
                                 on:click=move |_| {
-                                    let _ = fetch_system_info.dispatch(());
+                                    fetch_system_info.dispatch(());
                                 }
                                 disabled=loading
                             >
@@ -323,51 +317,37 @@ pub fn Home() -> impl IntoView {
                         {move || match system_info.get() {
                             Some(info) => {
                                 view! {
-                                    <div class="space-y-3">
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-600">"Host Name:"</span>
-                                            <span class="font-medium">{info.host_name}</span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-600">"OS:"</span>
-                                            <span class="font-medium">
-                                                {format!("{} ({})", info.name, info.os)}
-                                            </span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-600">"Kernel:"</span>
-                                            <span class="font-medium">{info.kernel}</span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-600">"CPU Cores:"</span>
-                                            <span class="font-medium">{info.cpu_cores}</span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-600">"Total Memory:"</span>
-                                            <span class="font-medium">
-                                                {format_bytes(info.total_memory_bytes)}
-                                            </span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-600">"Used Memory:"</span>
-                                            <span class="font-medium">
-                                                {format_bytes(info.used_memory_bytes)}
-                                            </span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-600">"Available Memory:"</span>
-                                            <span class="font-medium">
-                                                {format_bytes(info.available_memory_bytes)}
-                                            </span>
-                                        </div>
+                                    <div class="grid grid-cols-2 gap-y-2 text-sm">
+                                        <span class="text-gray-500">"Host Name"</span>
+                                        <span class="text-gray-800">{info.host_name}</span>
+
+                                        <span class="text-gray-500">"OS"</span>
+                                        <span class="text-gray-800">
+                                            {format!("{} ({})", info.name, info.os)}
+                                        </span>
+
+                                        <span class="text-gray-500">"Kernel"</span>
+                                        <span class="text-gray-800">{info.kernel}</span>
+
+                                        <span class="text-gray-500">"CPU Cores"</span>
+                                        <span class="text-gray-800">{info.cpu_cores}</span>
+
+                                        <span class="text-gray-500">"Memory"</span>
+                                        <span class="text-gray-800">
+                                            {format!(
+                                                "{} / {} used",
+                                                format_bytes(info.used_memory_bytes),
+                                                format_bytes(info.total_memory_bytes),
+                                            )}
+                                        </span>
                                     </div>
                                 }
                                     .into_any()
                             }
                             None => {
                                 view! {
-                                    <div class="text-gray-500 italic">
-                                        "Connect to a server to view system information"
+                                    <div class="text-gray-400 text-sm italic">
+                                        "Connect to view system information"
                                     </div>
                                 }
                                     .into_any()
@@ -375,216 +355,223 @@ pub fn Home() -> impl IntoView {
                         }}
                     </div>
 
-                    <div class="bg-white shadow-md rounded-lg p-6">
+                    <div class="border border-gray-200 rounded-lg bg-white p-6">
                         <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-xl font-semibold text-blue-700">
-                                "Cache Configuration"
-                            </h2>
+                            <h2 class="text-lg font-medium text-gray-700">"Cache Information"</h2>
                             <button
-                                class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-2 py-1 rounded transition-colors text-sm"
+                                class="text-xs text-gray-500 hover:text-gray-700"
                                 on:click=move |_| {
-                                    let _ = fetch_cache_info.dispatch(());
+                                    fetch_cache_info.dispatch(());
+                                    fetch_cache_usage.dispatch(());
                                 }
                                 disabled=loading
                             >
                                 "Refresh"
                             </button>
                         </div>
-                        {move || match cache_info.get() {
-                            Some(info) => {
-                                view! {
-                                    <div class="space-y-3">
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-600">"Batch Size:"</span>
-                                            <span class="font-medium">{info.batch_size}</span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-600">"Max Cache Size:"</span>
-                                            <span class="font-medium">
-                                                {format_bytes(info.max_cache_bytes as u64)}
-                                            </span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-600">"Memory Usage:"</span>
-                                            <span class="font-medium">
-                                                {format_bytes(info.memory_usage_bytes as u64)}
-                                            </span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-600">"Disk Usage:"</span>
-                                            <span class="font-medium">
-                                                {format_bytes(info.disk_usage_bytes as u64)}
-                                            </span>
-                                        </div>
-                                        <div class="mt-4">
-                                            <div class="text-gray-600 mb-1">"Memory Usage"</div>
-                                            <div class="w-full bg-gray-200 rounded-full h-2.5">
-                                                <div
-                                                    class="bg-blue-600 h-2.5 rounded-full"
-                                                    style=format!(
-                                                        "width: {}%",
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {move || match cache_info.get() {
+                                Some(info) => {
+                                    view! {
+                                        <div class="text-sm space-y-2">
+                                            <h3 class="text-gray-500 mb-2">"Configuration"</h3>
+                                            <div class="grid grid-cols-2 gap-y-2">
+                                                <span class="text-gray-500">"Batch Size"</span>
+                                                <span class="text-gray-800">{info.batch_size}</span>
+
+                                                <span class="text-gray-500">"Max Cache"</span>
+                                                <span class="text-gray-800">
+                                                    {format_bytes(info.max_cache_bytes)}
+                                                </span>
+
+                                                <span class="text-gray-500">"Memory Usage"</span>
+                                                <span class="text-gray-800">
+                                                    {format_bytes(info.memory_usage_bytes)}
+                                                </span>
+
+                                                <span class="text-gray-500">"Disk Usage"</span>
+                                                <span class="text-gray-800">
+                                                    {format_bytes(info.disk_usage_bytes)}
+                                                </span>
+                                            </div>
+                                            <div class="mt-3 pt-2 border-t border-gray-100">
+                                                <div class="w-full bg-gray-100 rounded-full h-1.5 mb-1">
+                                                    <div
+                                                        class="bg-gray-400 h-1.5 rounded-full"
+                                                        style=format!(
+                                                            "width: {}%",
+                                                            if info.max_cache_bytes > 0 {
+                                                                info.memory_usage_bytes as f64 / info.max_cache_bytes as f64
+                                                                    * 100.0
+                                                            } else {
+                                                                0.0
+                                                            },
+                                                        )
+                                                    ></div>
+                                                </div>
+                                                <div class="text-xs text-gray-500 text-right">
+                                                    {format!(
+                                                        "{}% utilized",
                                                         if info.max_cache_bytes > 0 {
-                                                            info.memory_usage_bytes as f64 / info.max_cache_bytes as f64
-                                                                * 100.0
+                                                            format!(
+                                                                "{:.1}",
+                                                                info.memory_usage_bytes as f64 / info.max_cache_bytes as f64
+                                                                    * 100.0,
+                                                            )
                                                         } else {
-                                                            0.0
+                                                            "0.0".to_string()
                                                         },
-                                                    )
-                                                ></div>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    }
+                                        .into_any()
                                 }
-                                    .into_any()
-                            }
-                            None => {
-                                view! {
-                                    <div class="text-gray-500 italic">
-                                        "Connect to a server to view cache configuration"
-                                    </div>
+                                None => {
+                                    view! {
+                                        <div class="text-gray-400 text-sm italic">
+                                            "Connect to view cache configuration"
+                                        </div>
+                                    }
+                                        .into_any()
                                 }
-                                    .into_any()
-                            }
-                        }}
-                    </div>
-                </div>
+                            }}
+                            {move || match cache_usage.get() {
+                                Some(usage) => {
+                                    view! {
+                                        <div class="text-sm space-y-2">
+                                            <h3 class="text-gray-500 mb-2">"Storage"</h3>
+                                            <div class="grid grid-cols-2 gap-y-2">
+                                                <span class="text-gray-500">"Directory"</span>
+                                                <span
+                                                    class="text-gray-800 truncate"
+                                                    title=usage.directory.clone()
+                                                >
+                                                    {usage.directory.clone()}
+                                                </span>
 
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                    <div class="bg-white shadow-md rounded-lg p-6">
-                        <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-xl font-semibold text-blue-700">"Cache Usage"</h2>
-                            <button
-                                class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-2 py-1 rounded transition-colors text-sm"
-                                on:click=move |_| {
-                                    let _ = fetch_cache_usage.dispatch(());
+                                                <span class="text-gray-500">"File Count"</span>
+                                                <span class="text-gray-800">{usage.file_count}</span>
+
+                                                <span class="text-gray-500">"Total Size"</span>
+                                                <span class="text-gray-800">
+                                                    {format_bytes(usage.total_size_bytes)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    }
+                                        .into_any()
                                 }
-                                disabled=loading
-                            >
-                                "Refresh"
-                            </button>
+                                None => {
+                                    view! {
+                                        <div class="text-gray-400 text-sm italic">
+                                            "Connect to view cache usage"
+                                        </div>
+                                    }
+                                        .into_any()
+                                }
+                            }}
                         </div>
-                        {move || match cache_usage.get() {
-                            Some(usage) => {
-                                view! {
-                                    <div class="space-y-3">
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-600">"Cache Directory:"</span>
-                                            <span class="font-medium">{usage.directory}</span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-600">"File Count:"</span>
-                                            <span class="font-medium">{usage.file_count}</span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-gray-600">"Total Size:"</span>
-                                            <span class="font-medium">
-                                                {format_bytes(usage.total_size_bytes)}
-                                            </span>
-                                        </div>
-                                    </div>
-                                }
-                                    .into_any()
-                            }
-                            None => {
-                                view! {
-                                    <div class="text-gray-500 italic">
-                                        "Connect to a server to view cache usage"
-                                    </div>
-                                }
-                                    .into_any()
-                            }
-                        }}
-                    </div>
-
-                    <div class="bg-white shadow-md rounded-lg p-6">
-                        <h2 class="text-xl font-semibold text-blue-700 mb-4">"Quick Actions"</h2>
-                        <div class="flex flex-wrap gap-2">
+                        <div class="flex gap-3 mt-4 pt-4 border-t border-gray-100">
                             <button
-                                class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition-colors"
+                                class="px-3 py-1.5 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-xs"
                                 on:click=move |_| {
-                                    let _ = reset_cache.dispatch(());
+                                    reset_cache.dispatch(());
                                 }
                                 disabled=loading
                             >
                                 "Reset Cache"
                             </button>
                             <button
-                                class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded transition-colors"
+                                class="px-3 py-1.5 border border-red-100 rounded text-red-500 hover:bg-red-50 transition-colors text-xs"
                                 on:click=move |_| {
-                                    let _ = shutdown_server.dispatch(());
+                                    shutdown_server.dispatch(());
                                 }
                                 disabled=loading
                             >
                                 "Shutdown Server"
                             </button>
-                            <button
-                                class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded transition-colors"
-                                on:click=fetch_all_data
-                                disabled=loading
-                            >
-                                "Refresh Data"
-                            </button>
                         </div>
                     </div>
-                </div>
 
-                <div class="bg-white shadow-md rounded-lg p-6">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-semibold text-blue-700">"Registered Tables"</h2>
-                        <button
-                            class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-2 py-1 rounded transition-colors text-sm"
-                            on:click=move |_| {
-                                let _ = fetch_tables.dispatch(());
+                    <div class="border border-gray-200 rounded-lg bg-white p-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-lg font-medium text-gray-700">"Registered Tables"</h2>
+                            <button
+                                class="text-xs text-gray-500 hover:text-gray-700"
+                                on:click=move |_| {
+                                    fetch_tables.dispatch(());
+                                }
+                                disabled=loading
+                            >
+                                "Refresh"
+                            </button>
+                        </div>
+                        {move || match tables.get() {
+                            Some(table_list) if !table_list.is_empty() => {
+                                view! {
+                                    <div class="overflow-x-auto -mx-6">
+                                        <table class="min-w-full border-collapse">
+                                            <thead>
+                                                <tr>
+                                                    <th class="py-2 px-6 text-left font-medium text-gray-500 text-sm border-b border-gray-100">
+                                                        "Table Name"
+                                                    </th>
+                                                    <th class="py-2 px-6 text-left font-medium text-gray-500 text-sm border-b border-gray-100">
+                                                        "Path"
+                                                    </th>
+                                                    <th class="py-2 px-6 text-left font-medium text-gray-500 text-sm border-b border-gray-100">
+                                                        "Cache Mode"
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="text-sm">
+                                                {table_list
+                                                    .into_iter()
+                                                    .map(|table| {
+                                                        view! {
+                                                            <tr>
+                                                                <td class="py-2 px-6 border-b border-gray-50 text-gray-800">
+                                                                    {table.name}
+                                                                </td>
+                                                                <td
+                                                                    class="py-2 px-6 border-b border-gray-50 font-mono text-xs text-gray-600 truncate"
+                                                                    title=table.path.clone()
+                                                                >
+                                                                    {table.path.clone()}
+                                                                </td>
+                                                                <td class="py-2 px-6 border-b border-gray-50 text-gray-800">
+                                                                    {table.cache_mode}
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    })
+                                                    .collect_view()}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                                    .into_any()
                             }
-                            disabled=loading
-                        >
-                            "Refresh"
-                        </button>
+                            Some(_) => {
+                                view! {
+                                    <div class="text-gray-400 text-sm italic">
+                                        "No tables registered"
+                                    </div>
+                                }
+                                    .into_any()
+                            }
+                            None => {
+                                view! {
+                                    <div class="text-gray-400 text-sm italic">
+                                        "Connect to view registered tables"
+                                    </div>
+                                }
+                                    .into_any()
+                            }
+                        }}
                     </div>
-                    {move || match tables.get() {
-                        Some(table_list) if !table_list.is_empty() => {
-                            view! {
-                                <div class="overflow-x-auto">
-                                    <table class="min-w-full bg-white">
-                                        <thead>
-                                            <tr class="bg-gray-100 text-gray-700 text-left">
-                                                <th class="py-2 px-3 border-b">"Table Name"</th>
-                                                <th class="py-2 px-3 border-b">"Path"</th>
-                                                <th class="py-2 px-3 border-b">"Cache Mode"</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {table_list
-                                                .into_iter()
-                                                .map(|table| {
-                                                    view! {
-                                                        <tr class="border-b hover:bg-gray-50">
-                                                            <td class="py-2 px-3">{table.name}</td>
-                                                            <td class="py-2 px-3 text-sm font-mono">{table.path}</td>
-                                                            <td class="py-2 px-3">{table.cache_mode}</td>
-                                                        </tr>
-                                                    }
-                                                })
-                                                .collect_view()}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            }
-                                .into_any()
-                        }
-                        Some(_) => {
-                            view! { <div class="text-gray-500 italic">"No tables registered"</div> }
-                                .into_any()
-                        }
-                        None => {
-                            view! {
-                                <div class="text-gray-500 italic">
-                                    "Connect to a server to view registered tables"
-                                </div>
-                            }
-                                .into_any()
-                        }
-                    }}
                 </div>
             </div>
         </ErrorBoundary>
