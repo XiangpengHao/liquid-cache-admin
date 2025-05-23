@@ -1,5 +1,7 @@
 use leptos::{logging, prelude::*};
 use serde::{de::DeserializeOwned, Deserialize};
+use crate::components::system_info::{SystemInfo as SystemInfoComponent, SystemInfo as SystemInfoData};
+use crate::components::cache_info::{CacheInfo as CacheInfoComponent, CacheInfo as CacheInfoData, ParquetCacheUsage};
 
 #[derive(Deserialize, Clone)]
 struct ApiResponse {
@@ -7,41 +9,35 @@ struct ApiResponse {
 }
 
 #[derive(Deserialize, Clone)]
-struct TableInfo {
-    name: String,
+struct ExecutionMetricsResponse {
+    plan_id: String,
+    execution_time_ms: u64,
+    cache_hits: u64,
+    cache_misses: u64,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize, Clone)]
+struct TraceParams {
     path: String,
-    cache_mode: String,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Clone)]
-struct TablesResponse {
-    tables: Vec<TableInfo>,
+struct ExecutionMetricsParams {
+    plan_id: String,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Clone)]
-struct ParquetCacheUsage {
-    directory: String,
-    file_count: usize,
-    total_size_bytes: u64,
+struct CacheStatsParams {
+    path: String,
 }
 
-#[derive(Deserialize, Clone, Debug)]
-struct CacheInfo {
-    batch_size: usize,
-    max_cache_bytes: u64,
-    memory_usage_bytes: u64,
-    disk_usage_bytes: u64,
-}
-
+#[allow(dead_code)]
 #[derive(Deserialize, Clone)]
-struct SystemInfo {
-    total_memory_bytes: u64,
-    used_memory_bytes: u64,
-    name: String,
-    kernel: String,
-    os: String,
-    host_name: String,
-    cpu_cores: usize,
+struct FlameGraphParams {
+    output_dir: String,
 }
 
 pub fn fetch_api<T>(
@@ -74,53 +70,27 @@ where
     })
 }
 
-// Helper function to format bytes to human-readable format
-fn format_bytes(bytes: u64) -> String {
-    if bytes < 1024 {
-        format!("{} B", bytes)
-    } else if bytes < 1024 * 1024 {
-        format!("{:.2} KB", bytes as f64 / 1024.0)
-    } else if bytes < 1024 * 1024 * 1024 {
-        format!("{:.2} MB", bytes as f64 / (1024.0 * 1024.0))
-    } else {
-        format!("{:.2} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
-    }
-}
-
 /// Default Home Page - LiquidCache Server Monitoring Dashboard
 #[component]
 pub fn Home() -> impl IntoView {
-    let (server_address, set_server_address) = signal("http://localhost:50052".to_string());
-    let (tables, set_tables) = signal(None);
-    let (cache_usage, set_cache_usage) = signal(None);
-    let (cache_info, set_cache_info) = signal(None);
+    let (server_address, set_server_address) = signal("http://localhost:53703".to_string());
+    let (cache_usage, set_cache_usage) = signal(None::<ParquetCacheUsage>);
+    let (cache_info, set_cache_info) = signal(None::<CacheInfoData>);
     let (system_info, set_system_info) = signal(None);
-    let (loading, set_loading) = signal(false);
     let (error, set_error) = signal(None);
     let (success_message, set_success_message) = signal(None);
-
-    let fetch_tables = Action::new(move |_: &()| {
-        let address = server_address.get();
-        set_loading.set(true);
-        set_error.set(None);
-
-        async move {
-            match fetch_api::<TablesResponse>(&format!("{}/get_registered_tables", address)).await {
-                Ok(response) => {
-                    set_tables.set(Some(response.tables));
-                    set_error.set(None);
-                }
-                Err(e) => {
-                    set_error.set(Some(format!("Failed to fetch tables: {}", e)));
-                }
-            }
-            set_loading.set(false);
-        }
-    });
+    
+    // New signals for the additional features
+    let (trace_active, set_trace_active) = signal(false);
+    let (trace_path, set_trace_path) = signal("/tmp".to_string());
+    let (metrics_plan_id, set_metrics_plan_id) = signal(String::new());
+    let (execution_metrics, set_execution_metrics) = signal(None);
+    let (stats_path, set_stats_path) = signal("/tmp".to_string());
+    let (flamegraph_active, set_flamegraph_active) = signal(false);
+    let (flamegraph_output_dir, set_flamegraph_output_dir) = signal("/tmp".to_string());
 
     let fetch_cache_usage = Action::new(move |_: &()| {
         let address = server_address.get();
-        set_loading.set(true);
         set_error.set(None);
 
         async move {
@@ -134,17 +104,15 @@ pub fn Home() -> impl IntoView {
                     set_error.set(Some(format!("Failed to fetch cache usage: {}", e)));
                 }
             }
-            set_loading.set(false);
         }
     });
 
     let fetch_cache_info = Action::new(move |_: &()| {
         let address = server_address.get();
-        set_loading.set(true);
         set_error.set(None);
 
         async move {
-            match fetch_api::<CacheInfo>(&format!("{}/cache_info", address)).await {
+            match fetch_api::<CacheInfoData>(&format!("{}/cache_info", address)).await {
                 Ok(response) => {
                     logging::log!("Cache info: {:?}", response);
                     set_cache_info.set(Some(response));
@@ -155,17 +123,15 @@ pub fn Home() -> impl IntoView {
                     set_error.set(Some(format!("Failed to fetch cache info: {}", e)));
                 }
             }
-            set_loading.set(false);
         }
     });
 
     let fetch_system_info = Action::new(move |_: &()| {
         let address = server_address.get();
-        set_loading.set(true);
         set_error.set(None);
 
         async move {
-            match fetch_api::<SystemInfo>(&format!("{}/system_info", address)).await {
+            match fetch_api::<SystemInfoData>(&format!("{}/system_info", address)).await {
                 Ok(response) => {
                     set_system_info.set(Some(response));
                     set_error.set(None);
@@ -174,13 +140,11 @@ pub fn Home() -> impl IntoView {
                     set_error.set(Some(format!("Failed to fetch system info: {}", e)));
                 }
             }
-            set_loading.set(false);
         }
     });
 
     let reset_cache = Action::new(move |_: &()| {
         let address = server_address.get();
-        set_loading.set(true);
         set_error.set(None);
         set_success_message.set(None);
 
@@ -193,13 +157,11 @@ pub fn Home() -> impl IntoView {
                     set_error.set(Some(format!("Failed to reset cache: {}", e)));
                 }
             }
-            set_loading.set(false);
         }
     });
 
     let shutdown_server = Action::new(move |_: &()| {
         let address = server_address.get();
-        set_loading.set(true);
         set_error.set(None);
         set_success_message.set(None);
 
@@ -212,12 +174,147 @@ pub fn Home() -> impl IntoView {
                     set_error.set(Some(format!("Failed to shutdown server: {}", e)));
                 }
             }
-            set_loading.set(false);
+        }
+    });
+
+    // New action for starting trace collection
+    let start_trace = Action::new(move |_: &()| {
+        let address = server_address.get();
+        set_error.set(None);
+        set_success_message.set(None);
+
+        async move {
+            match fetch_api::<ApiResponse>(&format!("{}/start_trace", address)).await {
+                Ok(response) => {
+                    set_success_message.set(Some(response.message));
+                    set_trace_active.set(true);
+                }
+                Err(e) => {
+                    set_error.set(Some(format!("Failed to start trace: {}", e)));
+                }
+            }
+        }
+    });
+
+    // Action for stopping trace collection
+    let stop_trace = Action::new(move |_: &()| {
+        let address = server_address.get();
+        let path = trace_path.get();
+        set_error.set(None);
+        set_success_message.set(None);
+
+        async move {
+            match fetch_api::<ApiResponse>(&format!("{}/stop_trace?path={}", address, path)).await {
+                Ok(response) => {
+                    set_success_message.set(Some(response.message));
+                    set_trace_active.set(false);
+                }
+                Err(e) => {
+                    set_error.set(Some(format!("Failed to stop trace: {}", e)));
+                }
+            }
+        }
+    });
+
+    // Action for getting execution metrics
+    let get_execution_metrics = Action::new(move |_: &()| {
+        let address = server_address.get();
+        let plan_id = metrics_plan_id.get();
+        
+        async move {
+            if plan_id.is_empty() {
+                set_error.set(Some("Plan ID cannot be empty".to_string()));
+                return;
+            }
+            set_error.set(None);
+
+            match fetch_api::<Option<ExecutionMetricsResponse>>(&format!(
+                "{}/execution_metrics?plan_id={}", 
+                address, 
+                plan_id
+            )).await {
+                Ok(Some(response)) => {
+                    set_execution_metrics.set(Some(response));
+                    set_error.set(None);
+                }
+                Ok(None) => {
+                    set_error.set(Some(format!("No metrics found for plan ID: {}", plan_id)));
+                    set_execution_metrics.set(None);
+                }
+                Err(e) => {
+                    set_error.set(Some(format!("Failed to fetch execution metrics: {}", e)));
+                }
+            }
+        }
+    });
+
+    // Action for getting cache stats
+    let get_cache_stats = Action::new(move |_: &()| {
+        let address = server_address.get();
+        let path = stats_path.get();
+        set_error.set(None);
+        set_success_message.set(None);
+
+        async move {
+            match fetch_api::<ApiResponse>(&format!(
+                "{}/cache_stats?path={}", 
+                address, 
+                path
+            )).await {
+                Ok(response) => {
+                    set_success_message.set(Some(response.message));
+                }
+                Err(e) => {
+                    set_error.set(Some(format!("Failed to get cache stats: {}", e)));
+                }
+            }
+        }
+    });
+
+    // Action for starting flamegraph collection
+    let start_flamegraph = Action::new(move |_: &()| {
+        let address = server_address.get();
+        set_error.set(None);
+        set_success_message.set(None);
+
+        async move {
+            match fetch_api::<ApiResponse>(&format!("{}/start_flamegraph", address)).await {
+                Ok(response) => {
+                    set_success_message.set(Some(response.message));
+                    set_flamegraph_active.set(true);
+                }
+                Err(e) => {
+                    set_error.set(Some(format!("Failed to start flamegraph: {}", e)));
+                }
+            }
+        }
+    });
+
+    // Action for stopping flamegraph collection
+    let stop_flamegraph = Action::new(move |_: &()| {
+        let address = server_address.get();
+        let output_dir = flamegraph_output_dir.get();
+        set_error.set(None);
+        set_success_message.set(None);
+
+        async move {
+            match fetch_api::<ApiResponse>(&format!(
+                "{}/stop_flamegraph?output_dir={}", 
+                address, 
+                output_dir
+            )).await {
+                Ok(response) => {
+                    set_success_message.set(Some(response.message));
+                    set_flamegraph_active.set(false);
+                }
+                Err(e) => {
+                    set_error.set(Some(format!("Failed to stop flamegraph: {}", e)));
+                }
+            }
         }
     });
 
     let fetch_all_data = move |_| {
-        fetch_tables.dispatch(());
         fetch_cache_usage.dispatch(());
         fetch_cache_info.dispatch(());
         fetch_system_info.dispatch(());
@@ -281,171 +378,177 @@ pub fn Home() -> impl IntoView {
                         <button
                             class="px-4 py-2 border border-gray-200 rounded text-gray-700 hover:bg-gray-100 transition-colors text-sm"
                             on:click=fetch_all_data
-                            disabled=loading
                         >
-                            {move || if loading.get() { "Connecting..." } else { "Connect" }}
+                            "Connect"
                         </button>
                     </div>
                 </div>
 
                 <div class="space-y-6 mb-8">
-                    <div class="border border-gray-200 rounded-lg bg-white p-6">
-                        <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-lg font-medium text-gray-700">"System Information"</h2>
-                            <button
-                                class="text-xs text-gray-500 hover:text-gray-700"
-                                on:click=move |_| {
-                                    fetch_system_info.dispatch(());
-                                }
-                                disabled=loading
-                            >
-                                "Refresh"
-                            </button>
-                        </div>
-                        {move || match system_info.get() {
-                            Some(info) => {
-                                view! {
-                                    <div class="grid grid-cols-2 gap-y-2 text-sm">
-                                        <span class="text-gray-500">"Host Name"</span>
-                                        <span class="text-gray-800">{info.host_name}</span>
+                    <SystemInfoComponent
+                        system_info=system_info
+                        on_refresh=Box::new(move || {
+                            let _ = fetch_system_info.dispatch(());
+                        })
+                    />
 
-                                        <span class="text-gray-500">"OS"</span>
-                                        <span class="text-gray-800">
-                                            {format!("{} ({})", info.name, info.os)}
-                                        </span>
-
-                                        <span class="text-gray-500">"Kernel"</span>
-                                        <span class="text-gray-800">{info.kernel}</span>
-
-                                        <span class="text-gray-500">"CPU Cores"</span>
-                                        <span class="text-gray-800">{info.cpu_cores}</span>
-
-                                        <span class="text-gray-500">"Memory"</span>
-                                        <span class="text-gray-800">
-                                            {format!(
-                                                "{} / {} used",
-                                                format_bytes(info.used_memory_bytes),
-                                                format_bytes(info.total_memory_bytes),
-                                            )}
-                                        </span>
-                                    </div>
-                                }
-                                    .into_any()
-                            }
-                            None => {
-                                view! {
-                                    <div class="text-gray-400 text-sm italic">
-                                        "Connect to view system information"
-                                    </div>
-                                }
-                                    .into_any()
-                            }
-                        }}
-                    </div>
+                    <CacheInfoComponent
+                        cache_info=cache_info
+                        cache_usage=cache_usage
+                        on_refresh=Box::new(move || {
+                            fetch_cache_info.dispatch(());
+                            fetch_cache_usage.dispatch(());
+                        })
+                        on_reset_cache=Box::new(move || {
+                            reset_cache.dispatch(());
+                        })
+                        on_shutdown_server=Box::new(move || {
+                            shutdown_server.dispatch(());
+                        })
+                    />
 
                     <div class="border border-gray-200 rounded-lg bg-white p-6">
                         <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-lg font-medium text-gray-700">"Cache Information"</h2>
-                            <button
-                                class="text-xs text-gray-500 hover:text-gray-700"
-                                on:click=move |_| {
-                                    fetch_cache_info.dispatch(());
-                                    fetch_cache_usage.dispatch(());
-                                }
-                                disabled=loading
-                            >
-                                "Refresh"
-                            </button>
+                            <h2 class="text-lg font-medium text-gray-700">"Trace Collection"</h2>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {move || match cache_info.get() {
-                                Some(info) => {
-                                    view! {
-                                        <div class="text-sm space-y-2">
-                                            <h3 class="text-gray-500 mb-2">"Configuration"</h3>
-                                            <div class="grid grid-cols-2 gap-y-2">
-                                                <span class="text-gray-500">"Batch Size"</span>
-                                                <span class="text-gray-800">{info.batch_size}</span>
-
-                                                <span class="text-gray-500">"Max Cache"</span>
-                                                <span class="text-gray-800">
-                                                    {format_bytes(info.max_cache_bytes)}
-                                                </span>
-
-                                                <span class="text-gray-500">"Memory Usage"</span>
-                                                <span class="text-gray-800">
-                                                    {format_bytes(info.memory_usage_bytes)}
-                                                </span>
-
-                                                <span class="text-gray-500">"Disk Usage"</span>
-                                                <span class="text-gray-800">
-                                                    {format_bytes(info.disk_usage_bytes)}
-                                                </span>
-                                            </div>
-                                            <div class="mt-3 pt-2 border-t border-gray-100">
-                                                <div class="w-full bg-gray-100 rounded-full h-1.5 mb-1">
-                                                    <div
-                                                        class="bg-gray-400 h-1.5 rounded-full"
-                                                        style=format!(
-                                                            "width: {}%",
-                                                            if info.max_cache_bytes > 0 {
-                                                                info.memory_usage_bytes as f64 / info.max_cache_bytes as f64
-                                                                    * 100.0
-                                                            } else {
-                                                                0.0
-                                                            },
-                                                        )
-                                                    ></div>
-                                                </div>
-                                                <div class="text-xs text-gray-500 text-right">
-                                                    {format!(
-                                                        "{}% utilized",
-                                                        if info.max_cache_bytes > 0 {
-                                                            format!(
-                                                                "{:.1}",
-                                                                info.memory_usage_bytes as f64 / info.max_cache_bytes as f64
-                                                                    * 100.0,
-                                                            )
-                                                        } else {
-                                                            "0.0".to_string()
-                                                        },
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    }
-                                        .into_any()
-                                }
-                                None => {
-                                    view! {
-                                        <div class="text-gray-400 text-sm italic">
-                                            "Connect to view cache configuration"
-                                        </div>
-                                    }
-                                        .into_any()
-                                }
-                            }}
-                            {move || match cache_usage.get() {
-                                Some(usage) => {
-                                    view! {
-                                        <div class="text-sm space-y-2">
-                                            <h3 class="text-gray-500 mb-2">"Storage"</h3>
-                                            <div class="grid grid-cols-2 gap-y-2">
-                                                <span class="text-gray-500">"Directory"</span>
-                                                <span
-                                                    class="text-gray-800 truncate"
-                                                    title=usage.directory.clone()
+                        <div class="text-sm space-y-4">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                                <div class="col-span-2">
+                                    <label class="block text-gray-600 mb-1">"Save Path"</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Path to save trace data"
+                                        class="w-full px-3 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
+                                        prop:value=trace_path
+                                        on:input=move |ev| {
+                                            set_trace_path.set(event_target_value(&ev));
+                                        }
+                                        disabled=move || trace_active.get()
+                                    />
+                                </div>
+                                <div>
+                                    {move || {
+                                        if trace_active.get() {
+                                            view! {
+                                                <button
+                                                    class="w-full px-3 py-2 border border-red-100 rounded text-red-500 hover:bg-red-50 transition-colors text-sm"
+                                                    on:click=move |_| {
+                                                        stop_trace.dispatch(());
+                                                    }
                                                 >
-                                                    {usage.directory.clone()}
-                                                </span>
+                                                    "Stop Trace"
+                                                </button>
+                                            }
+                                                .into_any()
+                                        } else {
+                                            view! {
+                                                <button
+                                                    class="w-full px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-sm"
+                                                    on:click=move |_| {
+                                                        start_trace.dispatch(());
+                                                    }
+                                                >
+                                                    "Start Trace"
+                                                </button>
+                                            }
+                                                .into_any()
+                                        }
+                                    }}
+                                </div>
+                            </div>
 
-                                                <span class="text-gray-500">"File Count"</span>
-                                                <span class="text-gray-800">{usage.file_count}</span>
+                            <div class="text-xs text-gray-500 mt-2">
+                                {move || {
+                                    if trace_active.get() {
+                                        "Trace collection is active. Stop to save trace data."
+                                    } else {
+                                        "Start trace collection to capture cache operations."
+                                    }
+                                }}
+                            </div>
+                        </div>
+                    </div>
 
-                                                <span class="text-gray-500">"Total Size"</span>
+                    <div class="border border-gray-200 rounded-lg bg-white p-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-lg font-medium text-gray-700">"Cache Statistics"</h2>
+                        </div>
+                        <div class="text-sm space-y-4">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                                <div class="col-span-2">
+                                    <label class="block text-gray-600 mb-1">"Save Path"</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Path to save cache statistics"
+                                        class="w-full px-3 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
+                                        prop:value=stats_path
+                                        on:input=move |ev| {
+                                            set_stats_path.set(event_target_value(&ev));
+                                        }
+                                    />
+                                </div>
+                                <div>
+                                    <button
+                                        class="w-full px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-sm"
+                                        on:click=move |_| {
+                                            get_cache_stats.dispatch(());
+                                        }
+                                    >
+                                        "Export Statistics"
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border border-gray-200 rounded-lg bg-white p-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-lg font-medium text-gray-700">"Execution Metrics"</h2>
+                        </div>
+                        <div class="text-sm space-y-4">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                                <div class="col-span-2">
+                                    <label class="block text-gray-600 mb-1">"Plan ID"</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Enter plan UUID"
+                                        class="w-full px-3 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
+                                        prop:value=metrics_plan_id
+                                        on:input=move |ev| {
+                                            set_metrics_plan_id.set(event_target_value(&ev));
+                                        }
+                                    />
+                                </div>
+                                <div>
+                                    <button
+                                        class="w-full px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-sm"
+                                        on:click=move |_| {
+                                            get_execution_metrics.dispatch(());
+                                        }
+                                    >
+                                        "Get Metrics"
+                                    </button>
+                                </div>
+                            </div>
+
+                            {move || match execution_metrics.get() {
+                                Some(metrics) => {
+                                    view! {
+                                        <div class="mt-4 bg-gray-50 p-4 rounded border border-gray-100">
+                                            <h3 class="text-sm font-medium text-gray-600 mb-2">
+                                                "Metrics for Plan: " {metrics.plan_id.clone()}
+                                            </h3>
+                                            <div class="grid grid-cols-2 gap-y-2">
+                                                <span class="text-gray-500">"Execution Time"</span>
                                                 <span class="text-gray-800">
-                                                    {format_bytes(usage.total_size_bytes)}
+                                                    {format!("{} ms", metrics.execution_time_ms)}
                                                 </span>
+
+                                                <span class="text-gray-500">"Cache Hits"</span>
+                                                <span class="text-gray-800">{metrics.cache_hits}</span>
+
+                                                <span class="text-gray-500">"Cache Misses"</span>
+                                                <span class="text-gray-800">{metrics.cache_misses}</span>
                                             </div>
                                         </div>
                                     }
@@ -453,112 +556,78 @@ pub fn Home() -> impl IntoView {
                                 }
                                 None => {
                                     view! {
-                                        <div class="text-gray-400 text-sm italic">
-                                            "Connect to view cache usage"
+                                        <div class="text-gray-400 text-sm italic mt-2">
+                                            "Enter a plan ID and click 'Get Metrics' to view execution metrics"
                                         </div>
                                     }
                                         .into_any()
                                 }
                             }}
                         </div>
-                        <div class="flex gap-3 mt-4 pt-4 border-t border-gray-100">
-                            <button
-                                class="px-3 py-1.5 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-xs"
-                                on:click=move |_| {
-                                    reset_cache.dispatch(());
-                                }
-                                disabled=loading
-                            >
-                                "Reset Cache"
-                            </button>
-                            <button
-                                class="px-3 py-1.5 border border-red-100 rounded text-red-500 hover:bg-red-50 transition-colors text-xs"
-                                on:click=move |_| {
-                                    shutdown_server.dispatch(());
-                                }
-                                disabled=loading
-                            >
-                                "Shutdown Server"
-                            </button>
-                        </div>
                     </div>
 
                     <div class="border border-gray-200 rounded-lg bg-white p-6">
                         <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-lg font-medium text-gray-700">"Registered Tables"</h2>
-                            <button
-                                class="text-xs text-gray-500 hover:text-gray-700"
-                                on:click=move |_| {
-                                    fetch_tables.dispatch(());
-                                }
-                                disabled=loading
-                            >
-                                "Refresh"
-                            </button>
+                            <h2 class="text-lg font-medium text-gray-700">"Flamegraph"</h2>
                         </div>
-                        {move || match tables.get() {
-                            Some(table_list) if !table_list.is_empty() => {
-                                view! {
-                                    <div class="overflow-x-auto -mx-6">
-                                        <table class="min-w-full border-collapse">
-                                            <thead>
-                                                <tr>
-                                                    <th class="py-2 px-6 text-left font-medium text-gray-500 text-sm border-b border-gray-100">
-                                                        "Table Name"
-                                                    </th>
-                                                    <th class="py-2 px-6 text-left font-medium text-gray-500 text-sm border-b border-gray-100">
-                                                        "Path"
-                                                    </th>
-                                                    <th class="py-2 px-6 text-left font-medium text-gray-500 text-sm border-b border-gray-100">
-                                                        "Cache Mode"
-                                                    </th>
-                                                </tr>
-                                            </thead>
-                                            <tbody class="text-sm">
-                                                {table_list
-                                                    .into_iter()
-                                                    .map(|table| {
-                                                        view! {
-                                                            <tr>
-                                                                <td class="py-2 px-6 border-b border-gray-50 text-gray-800">
-                                                                    {table.name}
-                                                                </td>
-                                                                <td
-                                                                    class="py-2 px-6 border-b border-gray-50 font-mono text-xs text-gray-600 truncate"
-                                                                    title=table.path.clone()
-                                                                >
-                                                                    {table.path.clone()}
-                                                                </td>
-                                                                <td class="py-2 px-6 border-b border-gray-50 text-gray-800">
-                                                                    {table.cache_mode}
-                                                                </td>
-                                                            </tr>
-                                                        }
-                                                    })
-                                                    .collect_view()}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                }
-                                    .into_any()
-                            }
-                            Some(_) => {
-                                view! {
-                                    <div class="text-gray-400 text-sm italic">
-                                        "No tables registered"
-                                    </div>
-                                }
-                                    .into_any()
-                            }
-                            None => {
-                                view! {
-                                    <div class="text-gray-400 text-sm italic">
-                                        "Connect to view registered tables"
-                                    </div>
-                                }
-                                    .into_any()
-                            }
-                        }}
+                        <div class="text-sm space-y-4">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                                <div class="col-span-2">
+                                    <label class="block text-gray-600 mb-1">
+                                        "Output Directory"
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="Path to save flamegraph"
+                                        class="w-full px-3 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
+                                        prop:value=flamegraph_output_dir
+                                        on:input=move |ev| {
+                                            set_flamegraph_output_dir.set(event_target_value(&ev));
+                                        }
+                                        disabled=move || flamegraph_active.get()
+                                    />
+                                </div>
+                                <div>
+                                    {move || {
+                                        if flamegraph_active.get() {
+                                            view! {
+                                                <button
+                                                    class="w-full px-3 py-2 border border-red-100 rounded text-red-500 hover:bg-red-50 transition-colors text-sm"
+                                                    on:click=move |_| {
+                                                        stop_flamegraph.dispatch(());
+                                                    }
+                                                >
+                                                    "Stop Flamegraph"
+                                                </button>
+                                            }
+                                                .into_any()
+                                        } else {
+                                            view! {
+                                                <button
+                                                    class="w-full px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-sm"
+                                                    on:click=move |_| {
+                                                        start_flamegraph.dispatch(());
+                                                    }
+                                                >
+                                                    "Start Flamegraph"
+                                                </button>
+                                            }
+                                                .into_any()
+                                        }
+                                    }}
+                                </div>
+                            </div>
+
+                            <div class="text-xs text-gray-500 mt-2">
+                                {move || {
+                                    if flamegraph_active.get() {
+                                        "Flamegraph collection is active. Stop to generate the flamegraph."
+                                    } else {
+                                        "Start flamegraph collection to profile server performance."
+                                    }
+                                }}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
