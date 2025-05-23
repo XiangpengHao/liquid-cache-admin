@@ -1,7 +1,10 @@
 use leptos::prelude::*;
 use serde::Deserialize;
 
-use crate::{components::toast::use_toast, utils::{fetch_api, format_bytes, ApiResponse}};
+use crate::{
+    components::toast::use_toast,
+    utils::{fetch_api, format_bytes, ApiResponse},
+};
 
 #[derive(Deserialize, Clone)]
 pub struct ParquetCacheUsage {
@@ -65,7 +68,6 @@ pub fn CacheInfo(
             }
         })
     };
-
 
     view! {
         <div class="border border-gray-200 rounded-lg bg-white p-4">

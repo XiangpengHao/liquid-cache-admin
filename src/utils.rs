@@ -14,7 +14,6 @@ pub fn format_bytes(bytes: u64) -> String {
     }
 }
 
-
 pub fn fetch_api<T>(
     path: &str,
 ) -> impl std::future::Future<Output = Result<T, gloo_net::Error>> + Send + '_
@@ -45,9 +44,7 @@ where
     })
 }
 
-
 #[derive(Deserialize, Clone)]
 pub struct ApiResponse {
     pub message: String,
 }
-

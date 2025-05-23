@@ -1,5 +1,5 @@
-use leptos::{logging, prelude::*};
 use leptos::task::spawn_local;
+use leptos::{logging, prelude::*};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -59,7 +59,7 @@ impl ToastContext {
         self.add_toast.set(Some(Toast::error(message)));
     }
 
-	#[allow(dead_code)]
+    #[allow(dead_code)]
     pub fn show_info(&self, message: String) {
         logging::log!("Showing info toast: {}", message);
         self.add_toast.set(Some(Toast::info(message)));
@@ -89,7 +89,7 @@ pub fn ToastProvider(children: ChildrenFn) -> impl IntoView {
         if let Some(toast) = add_toast.get() {
             let toast_id = toast.id;
             let duration = toast.duration;
-            
+
             set_toasts.update(|toasts| {
                 toasts.insert(toast_id, toast);
             });
@@ -124,8 +124,7 @@ pub fn ToastProvider(children: ChildrenFn) -> impl IntoView {
 
 #[component]
 pub fn ToastContainer() -> impl IntoView {
-    let toast_context = use_context::<ToastContext>()
-        .expect("ToastContext must be provided");
+    let toast_context = use_context::<ToastContext>().expect("ToastContext must be provided");
 
     view! {
         <div class="fixed top-4 right-4 z-50 space-y-2 max-w-sm">
@@ -152,26 +151,11 @@ pub fn ToastContainer() -> impl IntoView {
 }
 
 #[component]
-pub fn ToastItem(
-    toast: Toast,
-    #[prop(into)] on_close: Callback<()>,
-) -> impl IntoView {
+pub fn ToastItem(toast: Toast, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
     let (bg_class, border_class, text_class) = match toast.toast_type {
-        ToastType::Success => (
-            "bg-green-50",
-            "border-green-100",
-            "text-green-700",
-        ),
-        ToastType::Error => (
-            "bg-red-50", 
-            "border-red-100",
-            "text-red-700",
-        ),
-        ToastType::Info => (
-            "bg-blue-50",
-            "border-blue-100", 
-            "text-blue-700",
-        ),
+        ToastType::Success => ("bg-green-50", "border-green-100", "text-green-700"),
+        ToastType::Error => ("bg-red-50", "border-red-100", "text-red-700"),
+        ToastType::Info => ("bg-blue-50", "border-blue-100", "text-blue-700"),
     };
 
     let icon = match toast.toast_type {
@@ -202,4 +186,4 @@ pub fn ToastItem(
 pub fn use_toast() -> ToastContext {
     use_context::<ToastContext>()
         .expect("ToastContext must be provided. Make sure to wrap your app with ToastProvider.")
-} 
+}

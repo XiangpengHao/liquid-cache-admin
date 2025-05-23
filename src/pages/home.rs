@@ -1,13 +1,18 @@
-use leptos::{logging, prelude::*};
-use leptos_router::hooks::{use_query_map};
-use serde::Deserialize;
-use chrono::{Utc, Local, TimeZone};
-use crate::components::system_info::{SystemInfo as SystemInfoComponent, SystemInfo as SystemInfoData};
-use crate::components::cache_info::{CacheInfo as CacheInfoComponent, CacheInfo as CacheInfoData, ParquetCacheUsage};
-use crate::components::execution_plans::{ExecutionPlanNode, ExecutionPlans as ExecutionPlansComponent};
+use crate::components::cache_info::{
+    CacheInfo as CacheInfoComponent, CacheInfo as CacheInfoData, ParquetCacheUsage,
+};
+use crate::components::execution_plans::{
+    ExecutionPlanNode, ExecutionPlans as ExecutionPlansComponent,
+};
+use crate::components::system_info::{
+    SystemInfo as SystemInfoComponent, SystemInfo as SystemInfoData,
+};
 use crate::components::toast::use_toast;
 use crate::utils::{fetch_api, ApiResponse};
-
+use chrono::{Local, TimeZone, Utc};
+use leptos::{logging, prelude::*};
+use leptos_router::hooks::use_query_map;
+use serde::Deserialize;
 
 #[derive(Deserialize, Clone)]
 struct ExecutionMetricsResponse {
@@ -45,18 +50,16 @@ struct FlameGraphParams {
 #[component]
 pub fn Home() -> impl IntoView {
     let toast = use_toast();
-    
+
     // Read query parameters
     let query_map = use_query_map();
-    let host_param = move || {
-        query_map.read().get("host")
-    };
-    
+    let host_param = move || query_map.read().get("host");
+
     let (server_address, set_server_address) = signal("http://localhost:53703".to_string());
     let (cache_usage, set_cache_usage) = signal(None::<ParquetCacheUsage>);
     let (cache_info, set_cache_info) = signal(None::<CacheInfoData>);
     let (system_info, set_system_info) = signal(None);
-    
+
     // New signals for the additional features
     let (trace_active, set_trace_active) = signal(false);
     let (trace_path, set_trace_path) = signal("/tmp".to_string());
@@ -65,9 +68,10 @@ pub fn Home() -> impl IntoView {
     let (stats_path, set_stats_path) = signal("/tmp".to_string());
     let (flamegraph_active, set_flamegraph_active) = signal(false);
     let (flamegraph_output_dir, set_flamegraph_output_dir) = signal("/tmp".to_string());
-    
+
     // Execution plans signals
-    let (execution_plans, set_execution_plans) = signal(None::<Vec<(String, ExecutionPlanNode, String)>>);
+    let (execution_plans, set_execution_plans) =
+        signal(None::<Vec<(String, ExecutionPlanNode, String)>>);
 
     let fetch_cache_usage = {
         let toast = toast.clone();
@@ -76,7 +80,8 @@ pub fn Home() -> impl IntoView {
             let toast = toast.clone();
 
             async move {
-                match fetch_api::<ParquetCacheUsage>(&format!("{address}/parquet_cache_usage")).await
+                match fetch_api::<ParquetCacheUsage>(&format!("{address}/parquet_cache_usage"))
+                    .await
                 {
                     Ok(response) => {
                         set_cache_usage.set(Some(response));
@@ -136,7 +141,9 @@ pub fn Home() -> impl IntoView {
             let toast = toast.clone();
 
             async move {
-                match fetch_api::<Vec<(String, String, u64)>>(&format!("{address}/execution_plans")).await {
+                match fetch_api::<Vec<(String, String, u64)>>(&format!("{address}/execution_plans"))
+                    .await
+                {
                     Ok(response) => {
                         let mut plans = Vec::new();
                         for (key, value, timestamp) in response {
@@ -144,13 +151,18 @@ pub fn Home() -> impl IntoView {
                                 Ok(plan) => {
                                     let datetime = Utc.timestamp_opt(timestamp as i64, 0).unwrap();
                                     let local_datetime = datetime.with_timezone(&Local);
-                                    let formatted_time = local_datetime.format("%H:%M:%S").to_string();
+                                    let formatted_time =
+                                        local_datetime.format("%H:%M:%S").to_string();
                                     plans.push((key, plan, formatted_time, timestamp));
                                 }
                                 Err(e) => {
-                                    logging::error!("Failed to parse execution plan for key {key}: {e}");
+                                    logging::error!(
+                                        "Failed to parse execution plan for key {key}: {e}"
+                                    );
                                     logging::error!("Raw JSON value: {value}");
-                                    toast.show_error(format!("Failed to parse execution plan for key {key}: {e}"));
+                                    toast.show_error(format!(
+                                        "Failed to parse execution plan for key {key}: {e}"
+                                    ));
                                 }
                             }
                         }
@@ -219,7 +231,7 @@ pub fn Home() -> impl IntoView {
             let address = server_address.get();
             let plan_id = metrics_plan_id.get();
             let toast = toast.clone();
-            
+
             async move {
                 if plan_id.is_empty() {
                     toast.show_error("Plan ID cannot be empty".to_string());
@@ -228,7 +240,9 @@ pub fn Home() -> impl IntoView {
 
                 match fetch_api::<Option<ExecutionMetricsResponse>>(&format!(
                     "{address}/execution_metrics?plan_id={plan_id}"
-                )).await {
+                ))
+                .await
+                {
                     Ok(Some(response)) => {
                         set_execution_metrics.set(Some(response));
                     }
@@ -253,9 +267,8 @@ pub fn Home() -> impl IntoView {
             let toast = toast.clone();
 
             async move {
-                match fetch_api::<ApiResponse>(&format!(
-                    "{address}/cache_stats?path={path}"
-                )).await {
+                match fetch_api::<ApiResponse>(&format!("{address}/cache_stats?path={path}")).await
+                {
                     Ok(response) => {
                         toast.show_success(response.message);
                     }
@@ -299,7 +312,9 @@ pub fn Home() -> impl IntoView {
             async move {
                 match fetch_api::<ApiResponse>(&format!(
                     "{address}/stop_flamegraph?output_dir={output_dir}"
-                )).await {
+                ))
+                .await
+                {
                     Ok(response) => {
                         toast.show_success(response.message);
                         set_flamegraph_active.set(false);
@@ -643,4 +658,4 @@ pub fn Home() -> impl IntoView {
             </ErrorBoundary>
         </div>
     }
-} 
+}
