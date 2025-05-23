@@ -1,12 +1,10 @@
 use leptos::{logging, prelude::*};
-use serde::{de::DeserializeOwned, Deserialize};
+use serde::Deserialize;
 use crate::components::system_info::{SystemInfo as SystemInfoComponent, SystemInfo as SystemInfoData};
 use crate::components::cache_info::{CacheInfo as CacheInfoComponent, CacheInfo as CacheInfoData, ParquetCacheUsage};
+use crate::components::toast::use_toast;
+use crate::utils::{fetch_api, ApiResponse};
 
-#[derive(Deserialize, Clone)]
-struct ApiResponse {
-    message: String,
-}
 
 #[derive(Deserialize, Clone)]
 struct ExecutionMetricsResponse {
@@ -40,45 +38,14 @@ struct FlameGraphParams {
     output_dir: String,
 }
 
-pub fn fetch_api<T>(
-    path: &str,
-) -> impl std::future::Future<Output = Result<T, gloo_net::Error>> + Send + '_
-where
-    T: DeserializeOwned,
-{
-    use leptos::prelude::on_cleanup;
-    use send_wrapper::SendWrapper;
-
-    SendWrapper::new(async move {
-        let abort_controller = SendWrapper::new(web_sys::AbortController::new().ok());
-        let abort_signal = abort_controller.as_ref().map(|a| a.signal());
-
-        // abort in-flight requests if, e.g., we've navigated away from this page
-        on_cleanup(move || {
-            if let Some(abort_controller) = abort_controller.take() {
-                abort_controller.abort()
-            }
-        });
-
-        logging::log!("Fetching data from {}", path);
-
-        let response = gloo_net::http::Request::get(path)
-            .abort_signal(abort_signal.as_ref())
-            .send()
-            .await?;
-        response.json().await
-    })
-}
-
 /// Default Home Page - LiquidCache Server Monitoring Dashboard
 #[component]
 pub fn Home() -> impl IntoView {
+    let toast = use_toast();
     let (server_address, set_server_address) = signal("http://localhost:53703".to_string());
     let (cache_usage, set_cache_usage) = signal(None::<ParquetCacheUsage>);
     let (cache_info, set_cache_info) = signal(None::<CacheInfoData>);
     let (system_info, set_system_info) = signal(None);
-    let (error, set_error) = signal(None);
-    let (success_message, set_success_message) = signal(None);
     
     // New signals for the additional features
     let (trace_active, set_trace_active) = signal(false);
@@ -89,230 +56,215 @@ pub fn Home() -> impl IntoView {
     let (flamegraph_active, set_flamegraph_active) = signal(false);
     let (flamegraph_output_dir, set_flamegraph_output_dir) = signal("/tmp".to_string());
 
-    let fetch_cache_usage = Action::new(move |_: &()| {
-        let address = server_address.get();
-        set_error.set(None);
+    let fetch_cache_usage = {
+        let toast = toast.clone();
+        Action::new(move |_: &()| {
+            let address = server_address.get();
+            let toast = toast.clone();
 
-        async move {
-            match fetch_api::<ParquetCacheUsage>(&format!("{}/parquet_cache_usage", address)).await
-            {
-                Ok(response) => {
-                    set_cache_usage.set(Some(response));
-                    set_error.set(None);
-                }
-                Err(e) => {
-                    set_error.set(Some(format!("Failed to fetch cache usage: {}", e)));
+            async move {
+                match fetch_api::<ParquetCacheUsage>(&format!("{}/parquet_cache_usage", address)).await
+                {
+                    Ok(response) => {
+                        set_cache_usage.set(Some(response));
+                    }
+                    Err(e) => {
+                        toast.show_error(format!("Failed to fetch cache usage: {}", e));
+                    }
                 }
             }
-        }
-    });
+        })
+    };
 
-    let fetch_cache_info = Action::new(move |_: &()| {
-        let address = server_address.get();
-        set_error.set(None);
+    let fetch_cache_info = {
+        let toast = toast.clone();
+        Action::new(move |_: &()| {
+            let address = server_address.get();
+            let toast = toast.clone();
 
-        async move {
-            match fetch_api::<CacheInfoData>(&format!("{}/cache_info", address)).await {
-                Ok(response) => {
-                    logging::log!("Cache info: {:?}", response);
-                    set_cache_info.set(Some(response));
-                    set_error.set(None);
-                }
-                Err(e) => {
-                    logging::error!("Failed to fetch cache info: {}", e);
-                    set_error.set(Some(format!("Failed to fetch cache info: {}", e)));
-                }
-            }
-        }
-    });
-
-    let fetch_system_info = Action::new(move |_: &()| {
-        let address = server_address.get();
-        set_error.set(None);
-
-        async move {
-            match fetch_api::<SystemInfoData>(&format!("{}/system_info", address)).await {
-                Ok(response) => {
-                    set_system_info.set(Some(response));
-                    set_error.set(None);
-                }
-                Err(e) => {
-                    set_error.set(Some(format!("Failed to fetch system info: {}", e)));
+            async move {
+                match fetch_api::<CacheInfoData>(&format!("{}/cache_info", address)).await {
+                    Ok(response) => {
+                        logging::log!("Cache info: {:?}", response);
+                        set_cache_info.set(Some(response));
+                    }
+                    Err(e) => {
+                        logging::error!("Failed to fetch cache info: {}", e);
+                        toast.show_error(format!("Failed to fetch cache info: {}", e));
+                    }
                 }
             }
-        }
-    });
+        })
+    };
 
-    let reset_cache = Action::new(move |_: &()| {
-        let address = server_address.get();
-        set_error.set(None);
-        set_success_message.set(None);
+    let fetch_system_info = {
+        let toast = toast.clone();
+        Action::new(move |_: &()| {
+            let address = server_address.get();
+            let toast = toast.clone();
 
-        async move {
-            match fetch_api::<ApiResponse>(&format!("{}/reset_cache", address)).await {
-                Ok(response) => {
-                    set_success_message.set(Some(response.message));
-                }
-                Err(e) => {
-                    set_error.set(Some(format!("Failed to reset cache: {}", e)));
-                }
-            }
-        }
-    });
-
-    let shutdown_server = Action::new(move |_: &()| {
-        let address = server_address.get();
-        set_error.set(None);
-        set_success_message.set(None);
-
-        async move {
-            match fetch_api::<ApiResponse>(&format!("{}/shutdown", address)).await {
-                Ok(response) => {
-                    set_success_message.set(Some(response.message));
-                }
-                Err(e) => {
-                    set_error.set(Some(format!("Failed to shutdown server: {}", e)));
+            async move {
+                match fetch_api::<SystemInfoData>(&format!("{}/system_info", address)).await {
+                    Ok(response) => {
+                        set_system_info.set(Some(response));
+                    }
+                    Err(e) => {
+                        toast.show_error(format!("Failed to fetch system info: {}", e));
+                    }
                 }
             }
-        }
-    });
+        })
+    };
+
 
     // New action for starting trace collection
-    let start_trace = Action::new(move |_: &()| {
-        let address = server_address.get();
-        set_error.set(None);
-        set_success_message.set(None);
+    let start_trace = {
+        let toast = toast.clone();
+        Action::new(move |_: &()| {
+            let address = server_address.get();
+            let toast = toast.clone();
 
-        async move {
-            match fetch_api::<ApiResponse>(&format!("{}/start_trace", address)).await {
-                Ok(response) => {
-                    set_success_message.set(Some(response.message));
-                    set_trace_active.set(true);
-                }
-                Err(e) => {
-                    set_error.set(Some(format!("Failed to start trace: {}", e)));
+            async move {
+                match fetch_api::<ApiResponse>(&format!("{}/start_trace", address)).await {
+                    Ok(response) => {
+                        toast.show_success(response.message);
+                        set_trace_active.set(true);
+                    }
+                    Err(e) => {
+                        toast.show_error(format!("Failed to start trace: {}", e));
+                    }
                 }
             }
-        }
-    });
+        })
+    };
 
     // Action for stopping trace collection
-    let stop_trace = Action::new(move |_: &()| {
-        let address = server_address.get();
-        let path = trace_path.get();
-        set_error.set(None);
-        set_success_message.set(None);
+    let stop_trace = {
+        let toast = toast.clone();
+        Action::new(move |_: &()| {
+            let address = server_address.get();
+            let path = trace_path.get();
+            let toast = toast.clone();
 
-        async move {
-            match fetch_api::<ApiResponse>(&format!("{}/stop_trace?path={}", address, path)).await {
-                Ok(response) => {
-                    set_success_message.set(Some(response.message));
-                    set_trace_active.set(false);
-                }
-                Err(e) => {
-                    set_error.set(Some(format!("Failed to stop trace: {}", e)));
+            async move {
+                match fetch_api::<ApiResponse>(&format!("{}/stop_trace?path={}", address, path)).await {
+                    Ok(response) => {
+                        toast.show_success(response.message);
+                        set_trace_active.set(false);
+                    }
+                    Err(e) => {
+                        toast.show_error(format!("Failed to stop trace: {}", e));
+                    }
                 }
             }
-        }
-    });
+        })
+    };
 
     // Action for getting execution metrics
-    let get_execution_metrics = Action::new(move |_: &()| {
-        let address = server_address.get();
-        let plan_id = metrics_plan_id.get();
-        
-        async move {
-            if plan_id.is_empty() {
-                set_error.set(Some("Plan ID cannot be empty".to_string()));
-                return;
-            }
-            set_error.set(None);
+    let get_execution_metrics = {
+        let toast = toast.clone();
+        Action::new(move |_: &()| {
+            let address = server_address.get();
+            let plan_id = metrics_plan_id.get();
+            let toast = toast.clone();
+            
+            async move {
+                if plan_id.is_empty() {
+                    toast.show_error("Plan ID cannot be empty".to_string());
+                    return;
+                }
 
-            match fetch_api::<Option<ExecutionMetricsResponse>>(&format!(
-                "{}/execution_metrics?plan_id={}", 
-                address, 
-                plan_id
-            )).await {
-                Ok(Some(response)) => {
-                    set_execution_metrics.set(Some(response));
-                    set_error.set(None);
-                }
-                Ok(None) => {
-                    set_error.set(Some(format!("No metrics found for plan ID: {}", plan_id)));
-                    set_execution_metrics.set(None);
-                }
-                Err(e) => {
-                    set_error.set(Some(format!("Failed to fetch execution metrics: {}", e)));
+                match fetch_api::<Option<ExecutionMetricsResponse>>(&format!(
+                    "{}/execution_metrics?plan_id={}", 
+                    address, 
+                    plan_id
+                )).await {
+                    Ok(Some(response)) => {
+                        set_execution_metrics.set(Some(response));
+                    }
+                    Ok(None) => {
+                        toast.show_error(format!("No metrics found for plan ID: {}", plan_id));
+                        set_execution_metrics.set(None);
+                    }
+                    Err(e) => {
+                        toast.show_error(format!("Failed to fetch execution metrics: {}", e));
+                    }
                 }
             }
-        }
-    });
+        })
+    };
 
     // Action for getting cache stats
-    let get_cache_stats = Action::new(move |_: &()| {
-        let address = server_address.get();
-        let path = stats_path.get();
-        set_error.set(None);
-        set_success_message.set(None);
+    let get_cache_stats = {
+        let toast = toast.clone();
+        Action::new(move |_: &()| {
+            let address = server_address.get();
+            let path = stats_path.get();
+            let toast = toast.clone();
 
-        async move {
-            match fetch_api::<ApiResponse>(&format!(
-                "{}/cache_stats?path={}", 
-                address, 
-                path
-            )).await {
-                Ok(response) => {
-                    set_success_message.set(Some(response.message));
-                }
-                Err(e) => {
-                    set_error.set(Some(format!("Failed to get cache stats: {}", e)));
+            async move {
+                match fetch_api::<ApiResponse>(&format!(
+                    "{}/cache_stats?path={}", 
+                    address, 
+                    path
+                )).await {
+                    Ok(response) => {
+                        toast.show_success(response.message);
+                    }
+                    Err(e) => {
+                        toast.show_error(format!("Failed to get cache stats: {}", e));
+                    }
                 }
             }
-        }
-    });
+        })
+    };
 
     // Action for starting flamegraph collection
-    let start_flamegraph = Action::new(move |_: &()| {
-        let address = server_address.get();
-        set_error.set(None);
-        set_success_message.set(None);
+    let start_flamegraph = {
+        let toast = toast.clone();
+        Action::new(move |_: &()| {
+            let address = server_address.get();
+            let toast = toast.clone();
 
-        async move {
-            match fetch_api::<ApiResponse>(&format!("{}/start_flamegraph", address)).await {
-                Ok(response) => {
-                    set_success_message.set(Some(response.message));
-                    set_flamegraph_active.set(true);
-                }
-                Err(e) => {
-                    set_error.set(Some(format!("Failed to start flamegraph: {}", e)));
+            async move {
+                match fetch_api::<ApiResponse>(&format!("{}/start_flamegraph", address)).await {
+                    Ok(response) => {
+                        toast.show_success(response.message);
+                        set_flamegraph_active.set(true);
+                    }
+                    Err(e) => {
+                        toast.show_error(format!("Failed to start flamegraph: {}", e));
+                    }
                 }
             }
-        }
-    });
+        })
+    };
 
     // Action for stopping flamegraph collection
-    let stop_flamegraph = Action::new(move |_: &()| {
-        let address = server_address.get();
-        let output_dir = flamegraph_output_dir.get();
-        set_error.set(None);
-        set_success_message.set(None);
+    let stop_flamegraph = {
+        let toast = toast.clone();
+        Action::new(move |_: &()| {
+            let address = server_address.get();
+            let output_dir = flamegraph_output_dir.get();
+            let toast = toast.clone();
 
-        async move {
-            match fetch_api::<ApiResponse>(&format!(
-                "{}/stop_flamegraph?output_dir={}", 
-                address, 
-                output_dir
-            )).await {
-                Ok(response) => {
-                    set_success_message.set(Some(response.message));
-                    set_flamegraph_active.set(false);
-                }
-                Err(e) => {
-                    set_error.set(Some(format!("Failed to stop flamegraph: {}", e)));
+            async move {
+                match fetch_api::<ApiResponse>(&format!(
+                    "{}/stop_flamegraph?output_dir={}", 
+                    address, 
+                    output_dir
+                )).await {
+                    Ok(response) => {
+                        toast.show_success(response.message);
+                        set_flamegraph_active.set(false);
+                    }
+                    Err(e) => {
+                        toast.show_error(format!("Failed to stop flamegraph: {}", e));
+                    }
                 }
             }
-        }
-    });
+        })
+    };
 
     let fetch_all_data = move |_| {
         fetch_cache_usage.dispatch(());
@@ -339,30 +291,6 @@ pub fn Home() -> impl IntoView {
                 <h1 class="text-2xl font-medium text-gray-800 mb-8 border-b border-gray-200 pb-3">
                     "LiquidCache Monitor"
                 </h1>
-
-                {move || {
-                    error
-                        .get()
-                        .map(|err| {
-                            view! {
-                                <div class="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded mb-6 text-sm">
-                                    <p>{err}</p>
-                                </div>
-                            }
-                        })
-                }}
-
-                {move || {
-                    success_message
-                        .get()
-                        .map(|msg| {
-                            view! {
-                                <div class="bg-green-50 border border-green-100 text-green-600 px-4 py-3 rounded mb-6 text-sm">
-                                    <p>{msg}</p>
-                                </div>
-                            }
-                        })
-                }}
 
                 <div class="mb-8">
                     <div class="flex items-center space-x-2 mb-4">
@@ -395,15 +323,10 @@ pub fn Home() -> impl IntoView {
                     <CacheInfoComponent
                         cache_info=cache_info
                         cache_usage=cache_usage
+                        server_address=server_address
                         on_refresh=Box::new(move || {
                             fetch_cache_info.dispatch(());
                             fetch_cache_usage.dispatch(());
-                        })
-                        on_reset_cache=Box::new(move || {
-                            reset_cache.dispatch(());
-                        })
-                        on_shutdown_server=Box::new(move || {
-                            shutdown_server.dispatch(());
                         })
                     />
 

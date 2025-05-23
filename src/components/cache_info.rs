@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use serde::Deserialize;
 
-use crate::utils::format_bytes;
+use crate::{components::toast::use_toast, utils::{fetch_api, format_bytes, ApiResponse}};
 
 #[derive(Deserialize, Clone)]
 pub struct ParquetCacheUsage {
@@ -19,16 +19,54 @@ pub struct CacheInfo {
 }
 
 type RefreshCallback = Box<dyn Fn() + 'static>;
-type ActionCallback = Box<dyn Fn() + 'static>;
 
 #[component]
 pub fn CacheInfo(
     cache_info: ReadSignal<Option<CacheInfo>>,
     cache_usage: ReadSignal<Option<ParquetCacheUsage>>,
     on_refresh: RefreshCallback,
-    on_reset_cache: ActionCallback,
-    on_shutdown_server: ActionCallback,
+    server_address: ReadSignal<String>,
 ) -> impl IntoView {
+    let toast = use_toast();
+    let reset_cache = {
+        let toast = toast.clone();
+        Action::new(move |_: &()| {
+            let toast = toast.clone();
+            let server_address = server_address.get();
+
+            async move {
+                match fetch_api::<ApiResponse>(&format!("{}/reset_cache", server_address)).await {
+                    Ok(response) => {
+                        toast.show_success(response.message);
+                    }
+                    Err(e) => {
+                        toast.show_error(format!("Failed to reset cache: {}", e));
+                    }
+                }
+            }
+        })
+    };
+
+    let shutdown_server = {
+        let toast = toast.clone();
+        Action::new(move |_: &()| {
+            let address = server_address.get();
+            let toast = toast.clone();
+
+            async move {
+                match fetch_api::<ApiResponse>(&format!("{}/shutdown", address)).await {
+                    Ok(response) => {
+                        toast.show_success(response.message);
+                    }
+                    Err(e) => {
+                        toast.show_error(format!("Failed to shutdown server: {}", e));
+                    }
+                }
+            }
+        })
+    };
+
+
     view! {
         <div class="border border-gray-200 rounded-lg bg-white p-6">
             <div class="flex justify-between items-center mb-4">
@@ -147,13 +185,17 @@ pub fn CacheInfo(
             <div class="flex gap-3 mt-4 pt-4 border-t border-gray-100">
                 <button
                     class="px-3 py-1.5 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-xs"
-                    on:click=move |_| on_reset_cache()
+                    on:click=move |_| {
+                        reset_cache.dispatch(());
+                    }
                 >
                     "Reset Cache"
                 </button>
                 <button
                     class="px-3 py-1.5 border border-red-100 rounded text-red-500 hover:bg-red-50 transition-colors text-xs"
-                    on:click=move |_| on_shutdown_server()
+                    on:click=move |_| {
+                        shutdown_server.dispatch(());
+                    }
                 >
                     "Shutdown Server"
                 </button>
