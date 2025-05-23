@@ -4,7 +4,7 @@ use serde::{de::DeserializeOwned, Deserialize};
 // Helper function to format bytes to human-readable format
 pub fn format_bytes(bytes: u64) -> String {
     if bytes < 1024 {
-        format!("{} B", bytes)
+        format!("{bytes} B")
     } else if bytes < 1024 * 1024 {
         format!("{:.2} KB", bytes as f64 / 1024.0)
     } else if bytes < 1024 * 1024 * 1024 {

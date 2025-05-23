@@ -24,11 +24,11 @@ pub fn SystemInfo(
     on_refresh: RefreshCallback,
 ) -> impl IntoView {
     view! {
-        <div class="border border-gray-200 rounded-lg bg-white p-6">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-lg font-medium text-gray-700">"System Information"</h2>
+        <div class="border border-gray-200 rounded-lg bg-white p-4">
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-base font-medium text-gray-700">"System Information"</h2>
                 <button
-                    class="text-xs text-gray-500 hover:text-gray-700"
+                    class="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-50"
                     on:click=move |_| on_refresh()
                 >
                     "Refresh"
@@ -37,23 +37,27 @@ pub fn SystemInfo(
             {move || match system_info.get() {
                 Some(info) => {
                     view! {
-                        <div class="grid grid-cols-2 gap-y-2 text-sm">
-                            <span class="text-gray-500">"Host Name"</span>
-                            <span class="text-gray-800">{info.host_name.clone()}</span>
+                        <div class="grid grid-cols-2 gap-y-1 gap-x-4 text-sm">
+                            <span class="text-gray-500 text-xs">"Host Name"</span>
+                            <span class="text-gray-800 text-xs truncate">
+                                {info.host_name.clone()}
+                            </span>
 
-                            <span class="text-gray-500">"OS"</span>
-                            <span class="text-gray-800">
+                            <span class="text-gray-500 text-xs">"OS"</span>
+                            <span class="text-gray-800 text-xs truncate">
                                 {format!("{} ({})", info.name, info.os)}
                             </span>
 
-                            <span class="text-gray-500">"Kernel"</span>
-                            <span class="text-gray-800">{info.kernel.clone()}</span>
+                            <span class="text-gray-500 text-xs">"Kernel"</span>
+                            <span class="text-gray-800 text-xs truncate">
+                                {info.kernel.clone()}
+                            </span>
 
-                            <span class="text-gray-500">"CPU Cores"</span>
-                            <span class="text-gray-800">{info.cpu_cores}</span>
+                            <span class="text-gray-500 text-xs">"CPU Cores"</span>
+                            <span class="text-gray-800 text-xs">{info.cpu_cores}</span>
 
-                            <span class="text-gray-500">"Memory"</span>
-                            <span class="text-gray-800">
+                            <span class="text-gray-500 text-xs">"Memory"</span>
+                            <span class="text-gray-800 text-xs">
                                 {format!(
                                     "{} / {} used",
                                     format_bytes(info.used_memory_bytes),
@@ -61,13 +65,13 @@ pub fn SystemInfo(
                                 )}
                             </span>
 
-                            <span class="text-gray-500">"Server Resident Memory"</span>
-                            <span class="text-gray-800">
+                            <span class="text-gray-500 text-xs">"Server Resident"</span>
+                            <span class="text-gray-800 text-xs">
                                 {format_bytes(info.server_resident_memory_bytes)}
                             </span>
 
-                            <span class="text-gray-500">"Server Virtual Memory"</span>
-                            <span class="text-gray-800">
+                            <span class="text-gray-500 text-xs">"Server Virtual"</span>
+                            <span class="text-gray-800 text-xs">
                                 {format_bytes(info.server_virtual_memory_bytes)}
                             </span>
                         </div>
@@ -76,7 +80,7 @@ pub fn SystemInfo(
                 }
                 None => {
                     view! {
-                        <div class="text-gray-400 text-sm italic">
+                        <div class="text-gray-400 text-xs italic">
                             "Connect to view system information"
                         </div>
                     }

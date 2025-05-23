@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos::{logging, prelude::*};
 use leptos::task::spawn_local;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -50,15 +50,18 @@ pub struct ToastContext {
 
 impl ToastContext {
     pub fn show_success(&self, message: String) {
+        logging::log!("Showing success toast: {}", message);
         self.add_toast.set(Some(Toast::success(message)));
     }
 
     pub fn show_error(&self, message: String) {
+        logging::error!("Showing error toast: {}", message);
         self.add_toast.set(Some(Toast::error(message)));
     }
 
 	#[allow(dead_code)]
     pub fn show_info(&self, message: String) {
+        logging::log!("Showing info toast: {}", message);
         self.add_toast.set(Some(Toast::info(message)));
     }
 

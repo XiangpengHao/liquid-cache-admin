@@ -1,7 +1,10 @@
 use leptos::{logging, prelude::*};
+use leptos_router::hooks::{use_query_map};
 use serde::Deserialize;
+use chrono::{Utc, Local, TimeZone};
 use crate::components::system_info::{SystemInfo as SystemInfoComponent, SystemInfo as SystemInfoData};
 use crate::components::cache_info::{CacheInfo as CacheInfoComponent, CacheInfo as CacheInfoData, ParquetCacheUsage};
+use crate::components::execution_plans::{ExecutionPlanNode, ExecutionPlans as ExecutionPlansComponent};
 use crate::components::toast::use_toast;
 use crate::utils::{fetch_api, ApiResponse};
 
@@ -42,6 +45,13 @@ struct FlameGraphParams {
 #[component]
 pub fn Home() -> impl IntoView {
     let toast = use_toast();
+    
+    // Read query parameters
+    let query_map = use_query_map();
+    let host_param = move || {
+        query_map.read().get("host")
+    };
+    
     let (server_address, set_server_address) = signal("http://localhost:53703".to_string());
     let (cache_usage, set_cache_usage) = signal(None::<ParquetCacheUsage>);
     let (cache_info, set_cache_info) = signal(None::<CacheInfoData>);
@@ -55,6 +65,9 @@ pub fn Home() -> impl IntoView {
     let (stats_path, set_stats_path) = signal("/tmp".to_string());
     let (flamegraph_active, set_flamegraph_active) = signal(false);
     let (flamegraph_output_dir, set_flamegraph_output_dir) = signal("/tmp".to_string());
+    
+    // Execution plans signals
+    let (execution_plans, set_execution_plans) = signal(None::<Vec<(String, ExecutionPlanNode, String)>>);
 
     let fetch_cache_usage = {
         let toast = toast.clone();
@@ -63,13 +76,13 @@ pub fn Home() -> impl IntoView {
             let toast = toast.clone();
 
             async move {
-                match fetch_api::<ParquetCacheUsage>(&format!("{}/parquet_cache_usage", address)).await
+                match fetch_api::<ParquetCacheUsage>(&format!("{address}/parquet_cache_usage")).await
                 {
                     Ok(response) => {
                         set_cache_usage.set(Some(response));
                     }
                     Err(e) => {
-                        toast.show_error(format!("Failed to fetch cache usage: {}", e));
+                        toast.show_error(format!("Failed to fetch cache usage: {e}"));
                     }
                 }
             }
@@ -83,14 +96,14 @@ pub fn Home() -> impl IntoView {
             let toast = toast.clone();
 
             async move {
-                match fetch_api::<CacheInfoData>(&format!("{}/cache_info", address)).await {
+                match fetch_api::<CacheInfoData>(&format!("{address}/cache_info")).await {
                     Ok(response) => {
                         logging::log!("Cache info: {:?}", response);
                         set_cache_info.set(Some(response));
                     }
                     Err(e) => {
                         logging::error!("Failed to fetch cache info: {}", e);
-                        toast.show_error(format!("Failed to fetch cache info: {}", e));
+                        toast.show_error(format!("Failed to fetch cache info: {e}"));
                     }
                 }
             }
@@ -104,18 +117,57 @@ pub fn Home() -> impl IntoView {
             let toast = toast.clone();
 
             async move {
-                match fetch_api::<SystemInfoData>(&format!("{}/system_info", address)).await {
+                match fetch_api::<SystemInfoData>(&format!("{address}/system_info")).await {
                     Ok(response) => {
                         set_system_info.set(Some(response));
                     }
                     Err(e) => {
-                        toast.show_error(format!("Failed to fetch system info: {}", e));
+                        toast.show_error(format!("Failed to fetch system info: {e}"));
                     }
                 }
             }
         })
     };
 
+    let fetch_execution_plans = {
+        let toast = toast.clone();
+        Action::new(move |_: &()| {
+            let address = server_address.get();
+            let toast = toast.clone();
+
+            async move {
+                match fetch_api::<Vec<(String, String, u64)>>(&format!("{address}/execution_plans")).await {
+                    Ok(response) => {
+                        let mut plans = Vec::new();
+                        for (key, value, timestamp) in response {
+                            match serde_json::from_str::<ExecutionPlanNode>(&value) {
+                                Ok(plan) => {
+                                    let datetime = Utc.timestamp_opt(timestamp as i64, 0).unwrap();
+                                    let local_datetime = datetime.with_timezone(&Local);
+                                    let formatted_time = local_datetime.format("%H:%M:%S").to_string();
+                                    plans.push((key, plan, formatted_time, timestamp));
+                                }
+                                Err(e) => {
+                                    logging::error!("Failed to parse execution plan for key {key}: {e}");
+                                    logging::error!("Raw JSON value: {value}");
+                                    toast.show_error(format!("Failed to parse execution plan for key {key}: {e}"));
+                                }
+                            }
+                        }
+                        plans.sort_by(|a, b| b.3.cmp(&a.3));
+                        let sorted_plans: Vec<(String, ExecutionPlanNode, String)> = plans
+                            .into_iter()
+                            .map(|(key, plan, formatted_time, _)| (key, plan, formatted_time))
+                            .collect();
+                        set_execution_plans.set(Some(sorted_plans));
+                    }
+                    Err(e) => {
+                        toast.show_error(format!("Failed to fetch execution plans: {e}"));
+                    }
+                }
+            }
+        })
+    };
 
     // New action for starting trace collection
     let start_trace = {
@@ -125,13 +177,13 @@ pub fn Home() -> impl IntoView {
             let toast = toast.clone();
 
             async move {
-                match fetch_api::<ApiResponse>(&format!("{}/start_trace", address)).await {
+                match fetch_api::<ApiResponse>(&format!("{address}/start_trace")).await {
                     Ok(response) => {
                         toast.show_success(response.message);
                         set_trace_active.set(true);
                     }
                     Err(e) => {
-                        toast.show_error(format!("Failed to start trace: {}", e));
+                        toast.show_error(format!("Failed to start trace: {e}"));
                     }
                 }
             }
@@ -147,13 +199,13 @@ pub fn Home() -> impl IntoView {
             let toast = toast.clone();
 
             async move {
-                match fetch_api::<ApiResponse>(&format!("{}/stop_trace?path={}", address, path)).await {
+                match fetch_api::<ApiResponse>(&format!("{address}/stop_trace?path={path}")).await {
                     Ok(response) => {
                         toast.show_success(response.message);
                         set_trace_active.set(false);
                     }
                     Err(e) => {
-                        toast.show_error(format!("Failed to stop trace: {}", e));
+                        toast.show_error(format!("Failed to stop trace: {e}"));
                     }
                 }
             }
@@ -175,19 +227,17 @@ pub fn Home() -> impl IntoView {
                 }
 
                 match fetch_api::<Option<ExecutionMetricsResponse>>(&format!(
-                    "{}/execution_metrics?plan_id={}", 
-                    address, 
-                    plan_id
+                    "{address}/execution_metrics?plan_id={plan_id}"
                 )).await {
                     Ok(Some(response)) => {
                         set_execution_metrics.set(Some(response));
                     }
                     Ok(None) => {
-                        toast.show_error(format!("No metrics found for plan ID: {}", plan_id));
+                        toast.show_error(format!("No metrics found for plan ID: {plan_id}"));
                         set_execution_metrics.set(None);
                     }
                     Err(e) => {
-                        toast.show_error(format!("Failed to fetch execution metrics: {}", e));
+                        toast.show_error(format!("Failed to fetch execution metrics: {e}"));
                     }
                 }
             }
@@ -204,15 +254,13 @@ pub fn Home() -> impl IntoView {
 
             async move {
                 match fetch_api::<ApiResponse>(&format!(
-                    "{}/cache_stats?path={}", 
-                    address, 
-                    path
+                    "{address}/cache_stats?path={path}"
                 )).await {
                     Ok(response) => {
                         toast.show_success(response.message);
                     }
                     Err(e) => {
-                        toast.show_error(format!("Failed to get cache stats: {}", e));
+                        toast.show_error(format!("Failed to get cache stats: {e}"));
                     }
                 }
             }
@@ -227,13 +275,13 @@ pub fn Home() -> impl IntoView {
             let toast = toast.clone();
 
             async move {
-                match fetch_api::<ApiResponse>(&format!("{}/start_flamegraph", address)).await {
+                match fetch_api::<ApiResponse>(&format!("{address}/start_flamegraph")).await {
                     Ok(response) => {
                         toast.show_success(response.message);
                         set_flamegraph_active.set(true);
                     }
                     Err(e) => {
-                        toast.show_error(format!("Failed to start flamegraph: {}", e));
+                        toast.show_error(format!("Failed to start flamegraph: {e}"));
                     }
                 }
             }
@@ -250,16 +298,14 @@ pub fn Home() -> impl IntoView {
 
             async move {
                 match fetch_api::<ApiResponse>(&format!(
-                    "{}/stop_flamegraph?output_dir={}", 
-                    address, 
-                    output_dir
+                    "{address}/stop_flamegraph?output_dir={output_dir}"
                 )).await {
                     Ok(response) => {
                         toast.show_success(response.message);
                         set_flamegraph_active.set(false);
                     }
                     Err(e) => {
-                        toast.show_error(format!("Failed to stop flamegraph: {}", e));
+                        toast.show_error(format!("Failed to stop flamegraph: {e}"));
                     }
                 }
             }
@@ -270,270 +316,257 @@ pub fn Home() -> impl IntoView {
         fetch_cache_usage.dispatch(());
         fetch_cache_info.dispatch(());
         fetch_system_info.dispatch(());
+        fetch_execution_plans.dispatch(());
     };
 
+    Effect::new(move || {
+        let host = host_param();
+        if let Some(host) = host {
+            logging::log!("Found host parameter: {}", host);
+            set_server_address.set(host);
+            fetch_all_data(());
+        }
+    });
+
     view! {
-        <ErrorBoundary fallback=|errors| {
-            view! {
-                <h1 class="text-2xl text-gray-700 mb-4">"Something went wrong"</h1>
-                <ul class="text-sm text-gray-600">
-                    {move || {
-                        errors
-                            .get()
-                            .into_iter()
-                            .map(|(_, e)| view! { <li>{e.to_string()}</li> })
-                            .collect_view()
-                    }}
-                </ul>
-            }
-        }>
-            <div class="container mx-auto px-4 py-8 max-w-4xl bg-gray-50 min-h-screen">
-                <h1 class="text-2xl font-medium text-gray-800 mb-8 border-b border-gray-200 pb-3">
-                    "LiquidCache Monitor"
-                </h1>
+        <div class="min-h-screen bg-gray-50">
+            <ErrorBoundary fallback=|errors| {
+                view! {
+                    <h1 class="text-2xl text-gray-700 mb-4">"Something went wrong"</h1>
+                    <ul class="text-sm text-gray-600">
+                        {move || {
+                            errors
+                                .get()
+                                .into_iter()
+                                .map(|(_, e)| view! { <li>{e.to_string()}</li> })
+                                .collect_view()
+                        }}
+                    </ul>
+                }
+            }>
+                <div class="container mx-auto px-6 py-6 max-w-7xl">
+                    <h1 class="text-2xl font-medium text-gray-800 mb-6 border-b border-gray-200 pb-3">
+                        "LiquidCache Monitor"
+                    </h1>
 
-                <div class="mb-8">
-                    <div class="flex items-center space-x-2 mb-4">
-                        <input
-                            type="text"
-                            placeholder="Server address"
-                            class="flex-1 px-3 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
-                            prop:value=server_address
-                            on:input=move |ev| {
-                                set_server_address.set(event_target_value(&ev));
-                            }
+                    // Connection section
+                    <div class="mb-6">
+                        <div class="flex items-center space-x-2 mb-4">
+                            <input
+                                type="text"
+                                placeholder="Server address"
+                                class="flex-1 px-3 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
+                                prop:value=server_address
+                                on:input=move |ev| {
+                                    set_server_address.set(event_target_value(&ev));
+                                }
+                            />
+                            <button
+                                class="px-4 py-2 border border-gray-200 rounded text-gray-700 hover:bg-gray-100 transition-colors text-sm"
+                                on:click=move |_| {
+                                    fetch_all_data(());
+                                }
+                            >
+                                "Connect"
+                            </button>
+                        </div>
+                    </div>
+
+                    // Dashboard Grid Layout
+                    <div class="space-y-4 mb-6">
+                        // Top row - System Info and Cache Info
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <SystemInfoComponent
+                                system_info=system_info
+                                on_refresh=Box::new(move || {
+                                    let _ = fetch_system_info.dispatch(());
+                                })
+                            />
+
+                            <CacheInfoComponent
+                                cache_info=cache_info
+                                cache_usage=cache_usage
+                                server_address=server_address
+                                on_refresh=Box::new(move || {
+                                    fetch_cache_info.dispatch(());
+                                    fetch_cache_usage.dispatch(());
+                                })
+                            />
+                        </div>
+
+                        // Execution Plans - Full width
+                        <ExecutionPlansComponent
+                            execution_plans=execution_plans
+                            on_refresh=Box::new(move || {
+                                fetch_execution_plans.dispatch(());
+                            })
                         />
-                        <button
-                            class="px-4 py-2 border border-gray-200 rounded text-gray-700 hover:bg-gray-100 transition-colors text-sm"
-                            on:click=fetch_all_data
-                        >
-                            "Connect"
-                        </button>
                     </div>
-                </div>
 
-                <div class="space-y-6 mb-8">
-                    <SystemInfoComponent
-                        system_info=system_info
-                        on_refresh=Box::new(move || {
-                            let _ = fetch_system_info.dispatch(());
-                        })
-                    />
-
-                    <CacheInfoComponent
-                        cache_info=cache_info
-                        cache_usage=cache_usage
-                        server_address=server_address
-                        on_refresh=Box::new(move || {
-                            fetch_cache_info.dispatch(());
-                            fetch_cache_usage.dispatch(());
-                        })
-                    />
-
-                    <div class="border border-gray-200 rounded-lg bg-white p-6">
-                        <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-lg font-medium text-gray-700">"Trace Collection"</h2>
-                        </div>
-                        <div class="text-sm space-y-4">
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                                <div class="col-span-2">
-                                    <label class="block text-gray-600 mb-1">"Save Path"</label>
-                                    <input
-                                        type="text"
-                                        placeholder="Path to save trace data"
-                                        class="w-full px-3 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
-                                        prop:value=trace_path
-                                        on:input=move |ev| {
-                                            set_trace_path.set(event_target_value(&ev));
-                                        }
-                                        disabled=move || trace_active.get()
-                                    />
+                    // Tools Grid Layout
+                    <div class="space-y-4">
+                        <h2 class="text-lg font-medium text-gray-800 border-b border-gray-200 pb-2">
+                            "Profiling Tools"
+                        </h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            // Trace Collection Tool
+                            <div class="border border-gray-200 rounded-lg bg-white p-4">
+                                <div class="flex justify-between items-center mb-3">
+                                    <h3 class="text-base font-medium text-gray-700">
+                                        "Trace Collection"
+                                    </h3>
                                 </div>
-                                <div>
-                                    {move || {
-                                        if trace_active.get() {
+                                <div class="text-sm space-y-3">
+                                    <div class="space-y-2">
+                                        <label class="block text-gray-600 text-xs">
+                                            "Save Path"
+                                        </label>
+                                        <input
+                                            type="text"
+                                            placeholder="Path to save trace data"
+                                            class="w-full px-2 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
+                                            prop:value=trace_path
+                                            on:input=move |ev| {
+                                                set_trace_path.set(event_target_value(&ev));
+                                            }
+                                            disabled=move || trace_active.get()
+                                        />
+                                    </div>
+                                    <div>
+                                        {move || {
+                                            if trace_active.get() {
+                                                view! {
+                                                    <button
+                                                        class="w-full px-3 py-2 border border-red-100 rounded text-red-500 hover:bg-red-50 transition-colors text-sm"
+                                                        on:click=move |_| {
+                                                            stop_trace.dispatch(());
+                                                        }
+                                                    >
+                                                        "Stop Trace"
+                                                    </button>
+                                                }
+                                                    .into_any()
+                                            } else {
+                                                view! {
+                                                    <button
+                                                        class="w-full px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-sm"
+                                                        on:click=move |_| {
+                                                            start_trace.dispatch(());
+                                                        }
+                                                    >
+                                                        "Start Trace"
+                                                    </button>
+                                                }
+                                                    .into_any()
+                                            }
+                                        }}
+                                    </div>
+                                    <div class="text-xs text-gray-500">
+                                        {move || {
+                                            if trace_active.get() {
+                                                "Trace collection is active. Stop to save trace data."
+                                            } else {
+                                                "Start trace collection to capture cache operations."
+                                            }
+                                        }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            // Cache Statistics Tool
+                            <div class="border border-gray-200 rounded-lg bg-white p-4">
+                                <div class="flex justify-between items-center mb-3">
+                                    <h3 class="text-base font-medium text-gray-700">
+                                        "Cache Statistics"
+                                    </h3>
+                                </div>
+                                <div class="text-sm space-y-3">
+                                    <div class="space-y-2">
+                                        <label class="block text-gray-600 text-xs">
+                                            "Save Path"
+                                        </label>
+                                        <input
+                                            type="text"
+                                            placeholder="Path to save cache statistics"
+                                            class="w-full px-2 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
+                                            prop:value=stats_path
+                                            on:input=move |ev| {
+                                                set_stats_path.set(event_target_value(&ev));
+                                            }
+                                        />
+                                    </div>
+                                    <div>
+                                        <button
+                                            class="w-full px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-sm"
+                                            on:click=move |_| {
+                                                get_cache_stats.dispatch(());
+                                            }
+                                        >
+                                            "Export Statistics"
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            // Execution Metrics Tool
+                            <div class="border border-gray-200 rounded-lg bg-white p-4">
+                                <div class="flex justify-between items-center mb-3">
+                                    <h3 class="text-base font-medium text-gray-700">
+                                        "Execution Metrics"
+                                    </h3>
+                                </div>
+                                <div class="text-sm space-y-3">
+                                    <div class="space-y-2">
+                                        <label class="block text-gray-600 text-xs">"Plan ID"</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Enter plan UUID"
+                                            class="w-full px-2 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
+                                            prop:value=metrics_plan_id
+                                            on:input=move |ev| {
+                                                set_metrics_plan_id.set(event_target_value(&ev));
+                                            }
+                                        />
+                                    </div>
+                                    <div>
+                                        <button
+                                            class="w-full px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-sm"
+                                            on:click=move |_| {
+                                                get_execution_metrics.dispatch(());
+                                            }
+                                        >
+                                            "Get Metrics"
+                                        </button>
+                                    </div>
+
+                                    {move || match execution_metrics.get() {
+                                        Some(metrics) => {
                                             view! {
-                                                <button
-                                                    class="w-full px-3 py-2 border border-red-100 rounded text-red-500 hover:bg-red-50 transition-colors text-sm"
-                                                    on:click=move |_| {
-                                                        stop_trace.dispatch(());
-                                                    }
-                                                >
-                                                    "Stop Trace"
-                                                </button>
+                                                <div class="bg-gray-50 p-3 rounded border border-gray-100">
+                                                    <h4 class="text-xs font-medium text-gray-600 mb-2">
+                                                        "Metrics for Plan: " {metrics.plan_id.clone()}
+                                                    </h4>
+                                                    <div class="grid grid-cols-2 gap-y-1 text-xs">
+                                                        <span class="text-gray-500">"Execution Time"</span>
+                                                        <span class="text-gray-800">
+                                                            {format!("{} ms", metrics.execution_time_ms)}
+                                                        </span>
+
+                                                        <span class="text-gray-500">"Cache Hits"</span>
+                                                        <span class="text-gray-800">{metrics.cache_hits}</span>
+
+                                                        <span class="text-gray-500">"Cache Misses"</span>
+                                                        <span class="text-gray-800">{metrics.cache_misses}</span>
+                                                    </div>
+                                                </div>
                                             }
                                                 .into_any()
-                                        } else {
+                                        }
+                                        None => {
                                             view! {
-                                                <button
-                                                    class="w-full px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-sm"
-                                                    on:click=move |_| {
-                                                        start_trace.dispatch(());
-                                                    }
-                                                >
-                                                    "Start Trace"
-                                                </button>
-                                            }
-                                                .into_any()
-                                        }
-                                    }}
-                                </div>
-                            </div>
-
-                            <div class="text-xs text-gray-500 mt-2">
-                                {move || {
-                                    if trace_active.get() {
-                                        "Trace collection is active. Stop to save trace data."
-                                    } else {
-                                        "Start trace collection to capture cache operations."
-                                    }
-                                }}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="border border-gray-200 rounded-lg bg-white p-6">
-                        <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-lg font-medium text-gray-700">"Cache Statistics"</h2>
-                        </div>
-                        <div class="text-sm space-y-4">
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                                <div class="col-span-2">
-                                    <label class="block text-gray-600 mb-1">"Save Path"</label>
-                                    <input
-                                        type="text"
-                                        placeholder="Path to save cache statistics"
-                                        class="w-full px-3 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
-                                        prop:value=stats_path
-                                        on:input=move |ev| {
-                                            set_stats_path.set(event_target_value(&ev));
-                                        }
-                                    />
-                                </div>
-                                <div>
-                                    <button
-                                        class="w-full px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-sm"
-                                        on:click=move |_| {
-                                            get_cache_stats.dispatch(());
-                                        }
-                                    >
-                                        "Export Statistics"
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="border border-gray-200 rounded-lg bg-white p-6">
-                        <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-lg font-medium text-gray-700">"Execution Metrics"</h2>
-                        </div>
-                        <div class="text-sm space-y-4">
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                                <div class="col-span-2">
-                                    <label class="block text-gray-600 mb-1">"Plan ID"</label>
-                                    <input
-                                        type="text"
-                                        placeholder="Enter plan UUID"
-                                        class="w-full px-3 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
-                                        prop:value=metrics_plan_id
-                                        on:input=move |ev| {
-                                            set_metrics_plan_id.set(event_target_value(&ev));
-                                        }
-                                    />
-                                </div>
-                                <div>
-                                    <button
-                                        class="w-full px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-sm"
-                                        on:click=move |_| {
-                                            get_execution_metrics.dispatch(());
-                                        }
-                                    >
-                                        "Get Metrics"
-                                    </button>
-                                </div>
-                            </div>
-
-                            {move || match execution_metrics.get() {
-                                Some(metrics) => {
-                                    view! {
-                                        <div class="mt-4 bg-gray-50 p-4 rounded border border-gray-100">
-                                            <h3 class="text-sm font-medium text-gray-600 mb-2">
-                                                "Metrics for Plan: " {metrics.plan_id.clone()}
-                                            </h3>
-                                            <div class="grid grid-cols-2 gap-y-2">
-                                                <span class="text-gray-500">"Execution Time"</span>
-                                                <span class="text-gray-800">
-                                                    {format!("{} ms", metrics.execution_time_ms)}
-                                                </span>
-
-                                                <span class="text-gray-500">"Cache Hits"</span>
-                                                <span class="text-gray-800">{metrics.cache_hits}</span>
-
-                                                <span class="text-gray-500">"Cache Misses"</span>
-                                                <span class="text-gray-800">{metrics.cache_misses}</span>
-                                            </div>
-                                        </div>
-                                    }
-                                        .into_any()
-                                }
-                                None => {
-                                    view! {
-                                        <div class="text-gray-400 text-sm italic mt-2">
-                                            "Enter a plan ID and click 'Get Metrics' to view execution metrics"
-                                        </div>
-                                    }
-                                        .into_any()
-                                }
-                            }}
-                        </div>
-                    </div>
-
-                    <div class="border border-gray-200 rounded-lg bg-white p-6">
-                        <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-lg font-medium text-gray-700">"Flamegraph"</h2>
-                        </div>
-                        <div class="text-sm space-y-4">
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                                <div class="col-span-2">
-                                    <label class="block text-gray-600 mb-1">
-                                        "Output Directory"
-                                    </label>
-                                    <input
-                                        type="text"
-                                        placeholder="Path to save flamegraph"
-                                        class="w-full px-3 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
-                                        prop:value=flamegraph_output_dir
-                                        on:input=move |ev| {
-                                            set_flamegraph_output_dir.set(event_target_value(&ev));
-                                        }
-                                        disabled=move || flamegraph_active.get()
-                                    />
-                                </div>
-                                <div>
-                                    {move || {
-                                        if flamegraph_active.get() {
-                                            view! {
-                                                <button
-                                                    class="w-full px-3 py-2 border border-red-100 rounded text-red-500 hover:bg-red-50 transition-colors text-sm"
-                                                    on:click=move |_| {
-                                                        stop_flamegraph.dispatch(());
-                                                    }
-                                                >
-                                                    "Stop Flamegraph"
-                                                </button>
-                                            }
-                                                .into_any()
-                                        } else {
-                                            view! {
-                                                <button
-                                                    class="w-full px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-sm"
-                                                    on:click=move |_| {
-                                                        start_flamegraph.dispatch(());
-                                                    }
-                                                >
-                                                    "Start Flamegraph"
-                                                </button>
+                                                <div class="text-gray-400 text-xs italic">
+                                                    "Enter a plan ID and click 'Get Metrics' to view execution metrics"
+                                                </div>
                                             }
                                                 .into_any()
                                         }
@@ -541,19 +574,73 @@ pub fn Home() -> impl IntoView {
                                 </div>
                             </div>
 
-                            <div class="text-xs text-gray-500 mt-2">
-                                {move || {
-                                    if flamegraph_active.get() {
-                                        "Flamegraph collection is active. Stop to generate the flamegraph."
-                                    } else {
-                                        "Start flamegraph collection to profile server performance."
-                                    }
-                                }}
+                            // Flamegraph Tool
+                            <div class="border border-gray-200 rounded-lg bg-white p-4">
+                                <div class="flex justify-between items-center mb-3">
+                                    <h3 class="text-base font-medium text-gray-700">
+                                        "Flamegraph"
+                                    </h3>
+                                </div>
+                                <div class="text-sm space-y-3">
+                                    <div class="space-y-2">
+                                        <label class="block text-gray-600 text-xs">
+                                            "Output Directory"
+                                        </label>
+                                        <input
+                                            type="text"
+                                            placeholder="Path to save flamegraph"
+                                            class="w-full px-2 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
+                                            prop:value=flamegraph_output_dir
+                                            on:input=move |ev| {
+                                                set_flamegraph_output_dir.set(event_target_value(&ev));
+                                            }
+                                            disabled=move || flamegraph_active.get()
+                                        />
+                                    </div>
+                                    <div>
+                                        {move || {
+                                            if flamegraph_active.get() {
+                                                view! {
+                                                    <button
+                                                        class="w-full px-3 py-2 border border-red-100 rounded text-red-500 hover:bg-red-50 transition-colors text-sm"
+                                                        on:click=move |_| {
+                                                            stop_flamegraph.dispatch(());
+                                                        }
+                                                    >
+                                                        "Stop Flamegraph"
+                                                    </button>
+                                                }
+                                                    .into_any()
+                                            } else {
+                                                view! {
+                                                    <button
+                                                        class="w-full px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-sm"
+                                                        on:click=move |_| {
+                                                            start_flamegraph.dispatch(());
+                                                        }
+                                                    >
+                                                        "Start Flamegraph"
+                                                    </button>
+                                                }
+                                                    .into_any()
+                                            }
+                                        }}
+                                    </div>
+                                    <div class="text-xs text-gray-500">
+                                        {move || {
+                                            if flamegraph_active.get() {
+                                                "Flamegraph collection is active. Stop to generate the flamegraph."
+                                            } else {
+                                                "Start flamegraph collection to profile server performance."
+                                            }
+                                        }}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        </ErrorBoundary>
+            </ErrorBoundary>
+        </div>
     }
-}
+} 

@@ -35,12 +35,12 @@ pub fn CacheInfo(
             let server_address = server_address.get();
 
             async move {
-                match fetch_api::<ApiResponse>(&format!("{}/reset_cache", server_address)).await {
+                match fetch_api::<ApiResponse>(&format!("{server_address}/reset_cache")).await {
                     Ok(response) => {
                         toast.show_success(response.message);
                     }
                     Err(e) => {
-                        toast.show_error(format!("Failed to reset cache: {}", e));
+                        toast.show_error(format!("Failed to reset cache: {e}"));
                     }
                 }
             }
@@ -54,12 +54,12 @@ pub fn CacheInfo(
             let toast = toast.clone();
 
             async move {
-                match fetch_api::<ApiResponse>(&format!("{}/shutdown", address)).await {
+                match fetch_api::<ApiResponse>(&format!("{address}/shutdown")).await {
                     Ok(response) => {
                         toast.show_success(response.message);
                     }
                     Err(e) => {
-                        toast.show_error(format!("Failed to shutdown server: {}", e));
+                        toast.show_error(format!("Failed to shutdown server: {e}"));
                     }
                 }
             }
@@ -68,23 +68,25 @@ pub fn CacheInfo(
 
 
     view! {
-        <div class="border border-gray-200 rounded-lg bg-white p-6">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-lg font-medium text-gray-700">"Cache Information"</h2>
+        <div class="border border-gray-200 rounded-lg bg-white p-4">
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-base font-medium text-gray-700">"Cache Information"</h2>
                 <button
-                    class="text-xs text-gray-500 hover:text-gray-700"
+                    class="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-50"
                     on:click=move |_| on_refresh()
                 >
                     "Refresh"
                 </button>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="space-y-3">
                 {move || match cache_info.get() {
                     Some(info) => {
                         view! {
-                            <div class="text-sm space-y-2">
-                                <h3 class="text-gray-500 mb-2">"Configuration"</h3>
-                                <div class="grid grid-cols-2 gap-y-2">
+                            <div class="text-sm">
+                                <h3 class="text-gray-500 mb-2 text-xs font-medium">
+                                    "Configuration"
+                                </h3>
+                                <div class="grid grid-cols-2 gap-y-1 gap-x-3 text-xs">
                                     <span class="text-gray-500">"Batch Size"</span>
                                     <span class="text-gray-800">{info.batch_size}</span>
 
@@ -103,10 +105,10 @@ pub fn CacheInfo(
                                         {format_bytes(info.disk_usage_bytes)}
                                     </span>
                                 </div>
-                                <div class="mt-3 pt-2 border-t border-gray-100">
-                                    <div class="w-full bg-gray-100 rounded-full h-1.5 mb-1">
+                                <div class="mt-2 pt-2 border-t border-gray-100">
+                                    <div class="w-full bg-gray-100 rounded-full h-1 mb-1">
                                         <div
-                                            class="bg-gray-400 h-1.5 rounded-full"
+                                            class="bg-gray-400 h-1 rounded-full"
                                             style=format!(
                                                 "width: {}%",
                                                 if info.max_cache_bytes > 0 {
@@ -139,7 +141,7 @@ pub fn CacheInfo(
                     }
                     None => {
                         view! {
-                            <div class="text-gray-400 text-sm italic">
+                            <div class="text-gray-400 text-xs italic">
                                 "Connect to view cache configuration"
                             </div>
                         }
@@ -149,9 +151,9 @@ pub fn CacheInfo(
                 {move || match cache_usage.get() {
                     Some(usage) => {
                         view! {
-                            <div class="text-sm space-y-2">
-                                <h3 class="text-gray-500 mb-2">"Storage"</h3>
-                                <div class="grid grid-cols-2 gap-y-2">
+                            <div class="text-sm border-t border-gray-100 pt-3">
+                                <h3 class="text-gray-500 mb-2 text-xs font-medium">"Storage"</h3>
+                                <div class="grid grid-cols-2 gap-y-1 gap-x-3 text-xs">
                                     <span class="text-gray-500">"Directory"</span>
                                     <span
                                         class="text-gray-800 truncate"
@@ -174,7 +176,7 @@ pub fn CacheInfo(
                     }
                     None => {
                         view! {
-                            <div class="text-gray-400 text-sm italic">
+                            <div class="text-gray-400 text-xs italic border-t border-gray-100 pt-3">
                                 "Connect to view cache usage"
                             </div>
                         }
@@ -182,9 +184,9 @@ pub fn CacheInfo(
                     }
                 }}
             </div>
-            <div class="flex gap-3 mt-4 pt-4 border-t border-gray-100">
+            <div class="flex gap-2 mt-3 pt-3 border-t border-gray-100">
                 <button
-                    class="px-3 py-1.5 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-xs"
+                    class="px-2 py-1 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-xs"
                     on:click=move |_| {
                         reset_cache.dispatch(());
                     }
@@ -192,7 +194,7 @@ pub fn CacheInfo(
                     "Reset Cache"
                 </button>
                 <button
-                    class="px-3 py-1.5 border border-red-100 rounded text-red-500 hover:bg-red-50 transition-colors text-xs"
+                    class="px-2 py-1 border border-red-100 rounded text-red-500 hover:bg-red-50 transition-colors text-xs"
                     on:click=move |_| {
                         shutdown_server.dispatch(());
                     }
