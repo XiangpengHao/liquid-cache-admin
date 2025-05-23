@@ -11,7 +11,7 @@ use crate::components::toast::use_toast;
 use crate::utils::{fetch_api, ApiResponse};
 use chrono::{Local, TimeZone, Utc};
 use leptos::{logging, prelude::*};
-use leptos_router::hooks::use_query_map;
+use leptos_router::{hooks::use_navigate, hooks::use_query_map};
 use serde::Deserialize;
 
 #[derive(Deserialize, Clone)]
@@ -327,6 +327,8 @@ pub fn Home() -> impl IntoView {
         })
     };
 
+    let navigate = use_navigate();
+
     let fetch_all_data = move |_| {
         fetch_cache_usage.dispatch(());
         fetch_cache_info.dispatch(());
@@ -334,14 +336,26 @@ pub fn Home() -> impl IntoView {
         fetch_execution_plans.dispatch(());
     };
 
-    Effect::new(move || {
-        let host = host_param();
-        if let Some(host) = host {
-            logging::log!("Found host parameter: {}", host);
-            set_server_address.set(host);
-            fetch_all_data(());
-        }
-    });
+    // Initialize server address from URL parameter on mount (runs only once)
+    let host = host_param();
+    if let Some(host) = host {
+        logging::log!("Found host parameter on initial load: {}", host);
+        set_server_address.set(host);
+        // Automatically fetch data when loading from URL parameter
+        fetch_all_data(());
+    }
+
+    let connect_and_update_url = move |_| {
+        let current_address = server_address.get();
+        // Update URL with the current server address (simple encoding)
+        let encoded_address = current_address
+            .replace("://", "%3A%2F%2F")
+            .replace("/", "%2F");
+        let query_string = format!("?host={encoded_address}");
+        navigate(&query_string, Default::default());
+        // Fetch data
+        fetch_all_data(());
+    };
 
     view! {
         <div class="min-h-screen bg-gray-50">
@@ -378,9 +392,7 @@ pub fn Home() -> impl IntoView {
                             />
                             <button
                                 class="px-4 py-2 border border-gray-200 rounded text-gray-700 hover:bg-gray-100 transition-colors text-sm"
-                                on:click=move |_| {
-                                    fetch_all_data(());
-                                }
+                                on:click=connect_and_update_url
                             >
                                 "Connect"
                             </button>
