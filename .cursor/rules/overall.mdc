@@ -1,0 +1,7 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+1. This is leptos project setup with TailwindCSS, which you should use instead of writing your own css.
+2. UI style should follow notion style, light theme, dense information, elegant and consistent color.
