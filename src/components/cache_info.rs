@@ -72,7 +72,7 @@ pub fn CacheInfo(
     view! {
         <div class="border border-gray-200 rounded-lg bg-white p-4">
             <div class="flex justify-between items-center mb-3">
-                <h2 class="text-base font-medium text-gray-700">"Cache Information"</h2>
+                <h2 class="text-base font-medium text-gray-700">"Cache"</h2>
                 <button
                     class="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-50"
                     on:click=move |_| on_refresh()
@@ -85,10 +85,7 @@ pub fn CacheInfo(
                     Some(info) => {
                         view! {
                             <div class="text-sm">
-                                <h3 class="text-gray-500 mb-2 text-xs font-medium">
-                                    "Configuration"
-                                </h3>
-                                <div class="grid grid-cols-2 gap-y-1 gap-x-3 text-xs">
+                                <div class="grid grid-cols-4 gap-y-1 text-xs">
                                     <span class="text-gray-500">"Batch Size"</span>
                                     <span class="text-gray-800">{info.batch_size}</span>
 
@@ -97,45 +94,15 @@ pub fn CacheInfo(
                                         {format_bytes(info.max_cache_bytes)}
                                     </span>
 
-                                    <span class="text-gray-500">"Memory Usage"</span>
+                                    <span class="text-gray-500">"Memory used"</span>
                                     <span class="text-gray-800">
                                         {format_bytes(info.memory_usage_bytes)}
                                     </span>
 
-                                    <span class="text-gray-500">"Disk Usage"</span>
+                                    <span class="text-gray-500">"Disk used"</span>
                                     <span class="text-gray-800">
                                         {format_bytes(info.disk_usage_bytes)}
                                     </span>
-                                </div>
-                                <div class="mt-2 pt-2 border-t border-gray-100">
-                                    <div class="w-full bg-gray-100 rounded-full h-1 mb-1">
-                                        <div
-                                            class="bg-gray-400 h-1 rounded-full"
-                                            style=format!(
-                                                "width: {}%",
-                                                if info.max_cache_bytes > 0 {
-                                                    info.memory_usage_bytes as f64 / info.max_cache_bytes as f64
-                                                        * 100.0
-                                                } else {
-                                                    0.0
-                                                },
-                                            )
-                                        ></div>
-                                    </div>
-                                    <div class="text-xs text-gray-500 text-right">
-                                        {format!(
-                                            "{}% utilized",
-                                            if info.max_cache_bytes > 0 {
-                                                format!(
-                                                    "{:.1}",
-                                                    info.memory_usage_bytes as f64 / info.max_cache_bytes as f64
-                                                        * 100.0,
-                                                )
-                                            } else {
-                                                "0.0".to_string()
-                                            },
-                                        )}
-                                    </div>
                                 </div>
                             </div>
                         }
@@ -154,7 +121,6 @@ pub fn CacheInfo(
                     Some(usage) => {
                         view! {
                             <div class="text-sm border-t border-gray-100 pt-3">
-                                <h3 class="text-gray-500 mb-2 text-xs font-medium">"Storage"</h3>
                                 <div class="grid grid-cols-2 gap-y-1 gap-x-3 text-xs">
                                     <span class="text-gray-500">"Directory"</span>
                                     <span

@@ -26,7 +26,7 @@ pub fn SystemInfo(
     view! {
         <div class="border border-gray-200 rounded-lg bg-white p-4">
             <div class="flex justify-between items-center mb-3">
-                <h2 class="text-base font-medium text-gray-700">"System Information"</h2>
+                <h2 class="text-base font-medium text-gray-700">"System"</h2>
                 <button
                     class="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-50"
                     on:click=move |_| on_refresh()
@@ -37,7 +37,7 @@ pub fn SystemInfo(
             {move || match system_info.get() {
                 Some(info) => {
                     view! {
-                        <div class="grid grid-cols-2 gap-y-1 gap-x-4 text-sm">
+                        <div class="grid grid-cols-4 gap-y-1 text-sm">
                             <span class="text-gray-500 text-xs">"Host Name"</span>
                             <span class="text-gray-800 text-xs truncate">
                                 {info.host_name.clone()}
@@ -56,13 +56,14 @@ pub fn SystemInfo(
                             <span class="text-gray-500 text-xs">"CPU Cores"</span>
                             <span class="text-gray-800 text-xs">{info.cpu_cores}</span>
 
-                            <span class="text-gray-500 text-xs">"Memory"</span>
+                            <span class="text-gray-500 text-xs">"Memory used"</span>
                             <span class="text-gray-800 text-xs">
-                                {format!(
-                                    "{} / {} used",
-                                    format_bytes(info.used_memory_bytes),
-                                    format_bytes(info.total_memory_bytes),
-                                )}
+                                {format_bytes(info.used_memory_bytes)}
+                            </span>
+
+                            <span class="text-gray-500 text-xs">"Memory total"</span>
+                            <span class="text-gray-800 text-xs">
+                                {format_bytes(info.total_memory_bytes)}
                             </span>
 
                             <span class="text-gray-500 text-xs">"Server Resident"</span>
