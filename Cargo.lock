@@ -978,6 +978,7 @@ dependencies = [
  "console_log",
  "gloo-net",
  "gloo-timers",
+ "js-sys",
  "leptos",
  "leptos_meta",
  "leptos_router",
@@ -985,6 +986,7 @@ dependencies = [
  "send_wrapper",
  "serde",
  "serde_json",
+ "urlencoding",
  "uuid",
  "wasm-bindgen",
  "wasm-bindgen-test",
@@ -1808,6 +1810,12 @@ dependencies = [
  "idna",
  "percent-encoding",
 ]
+
+[[package]]
+name = "urlencoding"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 
 [[package]]
 name = "utf8-width"

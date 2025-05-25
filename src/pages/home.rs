@@ -22,6 +22,16 @@ struct ExecutionMetricsResponse {
     cache_misses: u64,
 }
 
+// New struct to handle the backend response format
+#[derive(Deserialize, Clone)]
+struct ExecutionPlanResponse {
+    plan: String,
+    #[allow(dead_code)]
+    id: String,
+    created_at: u64,
+    flamegraph_svg: Option<String>,
+}
+
 #[allow(dead_code)]
 #[derive(Deserialize, Clone)]
 struct TraceParams {
@@ -40,11 +50,7 @@ struct CacheStatsParams {
     path: String,
 }
 
-#[allow(dead_code)]
-#[derive(Deserialize, Clone)]
-struct FlameGraphParams {
-    output_dir: String,
-}
+
 
 /// Default Home Page - LiquidCache Server Monitoring Dashboard
 #[component]
@@ -60,18 +66,14 @@ pub fn Home() -> impl IntoView {
     let (cache_info, set_cache_info) = signal(None::<CacheInfoData>);
     let (system_info, set_system_info) = signal(None);
 
-    // New signals for the additional features
     let (trace_active, set_trace_active) = signal(false);
     let (trace_path, set_trace_path) = signal("/tmp".to_string());
     let (metrics_plan_id, set_metrics_plan_id) = signal(String::new());
     let (execution_metrics, set_execution_metrics) = signal(None);
     let (stats_path, set_stats_path) = signal("/tmp".to_string());
-    let (flamegraph_active, set_flamegraph_active) = signal(false);
-    let (flamegraph_output_dir, set_flamegraph_output_dir) = signal("/tmp".to_string());
 
-    // Execution plans signals
     let (execution_plans, set_execution_plans) =
-        signal(None::<Vec<(String, ExecutionPlanNode, String)>>);
+        signal(None::<Vec<(String, ExecutionPlanNode, String, Option<String>)>>);
 
     let fetch_cache_usage = {
         let toast = toast.clone();
@@ -141,35 +143,48 @@ pub fn Home() -> impl IntoView {
             let toast = toast.clone();
 
             async move {
-                match fetch_api::<Vec<(String, String, u64)>>(&format!("{address}/execution_plans"))
+                match fetch_api::<Vec<(String, String)>>(&format!("{address}/execution_plans"))
                     .await
                 {
                     Ok(response) => {
                         let mut plans = Vec::new();
-                        for (key, value, timestamp) in response {
-                            match serde_json::from_str::<ExecutionPlanNode>(&value) {
-                                Ok(plan) => {
-                                    let datetime = Utc.timestamp_opt(timestamp as i64, 0).unwrap();
-                                    let local_datetime = datetime.with_timezone(&Local);
-                                    let formatted_time =
-                                        local_datetime.format("%H:%M:%S").to_string();
-                                    plans.push((key, plan, formatted_time, timestamp));
+                        for (key, value) in response {
+                            match serde_json::from_str::<ExecutionPlanResponse>(&value) {
+                                Ok(plan_response) => {
+                                    match serde_json::from_str::<ExecutionPlanNode>(&plan_response.plan) {
+                                        Ok(plan) => {
+                                            let datetime = Utc.timestamp_opt(plan_response.created_at as i64, 0).unwrap();
+                                            let local_datetime = datetime.with_timezone(&Local);
+                                            let formatted_time =
+                                                local_datetime.format("%H:%M:%S").to_string();
+                                            plans.push((key, plan, formatted_time, plan_response.flamegraph_svg, plan_response.created_at));
+                                        }
+                                        Err(e) => {
+                                            logging::error!(
+                                                "Failed to parse execution plan for key {key}: {e}"
+                                            );
+                                            logging::error!("Raw plan JSON: {}", plan_response.plan);
+                                            toast.show_error(format!(
+                                                "Failed to parse execution plan for key {key}: {e}"
+                                            ));
+                                        }
+                                    }
                                 }
                                 Err(e) => {
                                     logging::error!(
-                                        "Failed to parse execution plan for key {key}: {e}"
+                                        "Failed to parse execution plan response for key {key}: {e}"
                                     );
                                     logging::error!("Raw JSON value: {value}");
                                     toast.show_error(format!(
-                                        "Failed to parse execution plan for key {key}: {e}"
+                                        "Failed to parse execution plan response for key {key}: {e}"
                                     ));
                                 }
                             }
                         }
-                        plans.sort_by(|a, b| b.3.cmp(&a.3));
-                        let sorted_plans: Vec<(String, ExecutionPlanNode, String)> = plans
+                        plans.sort_by(|a, b| b.4.cmp(&a.4));
+                        let sorted_plans: Vec<(String, ExecutionPlanNode, String, Option<String>)> = plans
                             .into_iter()
-                            .map(|(key, plan, formatted_time, _)| (key, plan, formatted_time))
+                            .map(|(key, plan, formatted_time, flamegraph_svg, _)| (key, plan, formatted_time, flamegraph_svg))
                             .collect();
                         set_execution_plans.set(Some(sorted_plans));
                     }
@@ -280,52 +295,7 @@ pub fn Home() -> impl IntoView {
         })
     };
 
-    // Action for starting flamegraph collection
-    let start_flamegraph = {
-        let toast = toast.clone();
-        Action::new(move |_: &()| {
-            let address = server_address.get();
-            let toast = toast.clone();
 
-            async move {
-                match fetch_api::<ApiResponse>(&format!("{address}/start_flamegraph")).await {
-                    Ok(response) => {
-                        toast.show_success(response.message);
-                        set_flamegraph_active.set(true);
-                    }
-                    Err(e) => {
-                        toast.show_error(format!("Failed to start flamegraph: {e}"));
-                    }
-                }
-            }
-        })
-    };
-
-    // Action for stopping flamegraph collection
-    let stop_flamegraph = {
-        let toast = toast.clone();
-        Action::new(move |_: &()| {
-            let address = server_address.get();
-            let output_dir = flamegraph_output_dir.get();
-            let toast = toast.clone();
-
-            async move {
-                match fetch_api::<ApiResponse>(&format!(
-                    "{address}/stop_flamegraph?output_dir={output_dir}"
-                ))
-                .await
-                {
-                    Ok(response) => {
-                        toast.show_success(response.message);
-                        set_flamegraph_active.set(false);
-                    }
-                    Err(e) => {
-                        toast.show_error(format!("Failed to stop flamegraph: {e}"));
-                    }
-                }
-            }
-        })
-    };
 
     let navigate = use_navigate();
 
@@ -598,70 +568,6 @@ pub fn Home() -> impl IntoView {
                                                 .into_any()
                                         }
                                     }}
-                                </div>
-                            </div>
-
-                            // Flamegraph Tool
-                            <div class="border border-gray-200 rounded-lg bg-white p-4">
-                                <div class="flex justify-between items-center mb-3">
-                                    <h3 class="text-base font-medium text-gray-700">
-                                        "Flamegraph"
-                                    </h3>
-                                </div>
-                                <div class="text-sm space-y-3">
-                                    <div class="space-y-2">
-                                        <label class="block text-gray-600 text-xs">
-                                            "Output Directory"
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="Path to save flamegraph"
-                                            class="w-full px-2 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
-                                            prop:value=flamegraph_output_dir
-                                            on:input=move |ev| {
-                                                set_flamegraph_output_dir.set(event_target_value(&ev));
-                                            }
-                                            disabled=move || flamegraph_active.get()
-                                        />
-                                    </div>
-                                    <div>
-                                        {move || {
-                                            if flamegraph_active.get() {
-                                                view! {
-                                                    <button
-                                                        class="w-full px-3 py-2 border border-red-100 rounded text-red-500 hover:bg-red-50 transition-colors text-sm"
-                                                        on:click=move |_| {
-                                                            stop_flamegraph.dispatch(());
-                                                        }
-                                                    >
-                                                        "Stop Flamegraph"
-                                                    </button>
-                                                }
-                                                    .into_any()
-                                            } else {
-                                                view! {
-                                                    <button
-                                                        class="w-full px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-sm"
-                                                        on:click=move |_| {
-                                                            start_flamegraph.dispatch(());
-                                                        }
-                                                    >
-                                                        "Start Flamegraph"
-                                                    </button>
-                                                }
-                                                    .into_any()
-                                            }
-                                        }}
-                                    </div>
-                                    <div class="text-xs text-gray-500">
-                                        {move || {
-                                            if flamegraph_active.get() {
-                                                "Flamegraph collection is active. Stop to generate the flamegraph."
-                                            } else {
-                                                "Start flamegraph collection to profile server performance."
-                                            }
-                                        }}
-                                    </div>
                                 </div>
                             </div>
                         </div>

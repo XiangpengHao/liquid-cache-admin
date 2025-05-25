@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use leptos::wasm_bindgen::JsCast;
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 
@@ -94,6 +95,72 @@ fn format_number(num_str: &str) -> String {
         }
     } else {
         num_str.to_string()
+    }
+}
+
+#[component]
+fn Flamegraph(svg_content: String, plan_id: String) -> impl IntoView {
+    let svg_for_download = svg_content.clone();
+    let plan_id_for_download = plan_id.clone();
+
+    let download_svg = move |_| {
+        if let Some(window) = web_sys::window() {
+            if let Some(document) = window.document() {
+                if let Ok(element) = document.create_element("a") {
+                    let anchor = element.unchecked_into::<web_sys::HtmlAnchorElement>();
+
+                    // Create data URL for SVG
+                    let data_url = format!(
+                        "data:image/svg+xml;charset=utf-8,{}",
+                        urlencoding::encode(&svg_for_download)
+                    );
+
+                    anchor.set_href(&data_url);
+                    anchor.set_download(&format!("flamegraph-{plan_id_for_download}.svg"));
+
+                    // Temporarily add to DOM, click, then remove
+                    if let Some(body) = document.body() {
+                        let _ = body.append_child(&anchor);
+                        anchor.click();
+                        let _ = body.remove_child(&anchor);
+                    }
+                }
+            }
+        }
+    };
+
+    view! {
+        <div class="p-4 rounded border border-gray-100">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-sm font-medium text-gray-700">"Flamegraph"</h3>
+                <div class="flex gap-2">
+                    <button
+                        class="px-3 py-1 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-xs flex items-center gap-1"
+                        on:click=download_svg
+                    >
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                            ></path>
+                        </svg>
+                        "Download SVG"
+                    </button>
+                </div>
+            </div>
+            <div class="bg-white rounded overflow-auto">
+                <iframe
+                    srcdoc=format!(
+                        "<!DOCTYPE html><html><head><style>body{{margin:0;padding:0;}} svg{{width:100%;height:auto;}}</style></head><body>{}</body></html>",
+                        svg_content,
+                    )
+                    class="w-full h-[600px] border-0"
+                    sandbox="allow-scripts allow-same-origin"
+                ></iframe>
+            </div>
+        </div>
     }
 }
 
@@ -393,9 +460,11 @@ fn ExecutionPlanNode(node: ExecutionPlanNode) -> impl IntoView {
     }
 }
 
+pub type ExecutionInfo = (String, ExecutionPlanNode, String, Option<String>);
+
 #[component]
 pub fn ExecutionPlans(
-    execution_plans: ReadSignal<Option<Vec<(String, ExecutionPlanNode, String)>>>,
+    execution_plans: ReadSignal<Option<Vec<ExecutionInfo>>>,
     on_refresh: RefreshCallback,
 ) -> impl IntoView {
     let (selected_plan_id, set_selected_plan_id) = signal(String::new());
@@ -407,7 +476,7 @@ pub fn ExecutionPlans(
                 let current_selected = selected_plan_id.get();
                 // If no plan is selected, or if selected plan no longer exists, select the first one
                 if current_selected.is_empty()
-                    || !plans.iter().any(|(id, _, _)| id == &current_selected)
+                    || !plans.iter().any(|(id, _, _, _)| id == &current_selected)
                 {
                     set_selected_plan_id.set(plans[0].0.clone());
                 }
@@ -434,7 +503,7 @@ pub fn ExecutionPlans(
                                 .map(|plans| {
                                     plans
                                         .into_iter()
-                                        .map(|(id, _, created_at)| {
+                                        .map(|(id, _, created_at, _)| {
                                             let display_id = if id.len() > 8 {
                                                 format!("{}... ({created_at})", &id[0..8])
                                             } else {
@@ -467,9 +536,9 @@ pub fn ExecutionPlans(
                         selected_plan_id.get(),
                     ) {
                         if !selected_id.is_empty() {
-                            if let Some((_, plan_json, created_at)) = plans
+                            if let Some((_, plan_json, created_at, flamegraph_svg)) = plans
                                 .iter()
-                                .find(|(id, _, _)| id == &selected_id)
+                                .find(|(id, _, _, _)| id == &selected_id)
                             {
                                 view! {
                                     <div class="space-y-2">
@@ -492,6 +561,19 @@ pub fn ExecutionPlans(
                                                 <ExecutionPlanNode node=plan_json.clone() />
                                             </div>
                                         </div>
+
+                                        // Flamegraph SVG display - placed after execution plan
+                                        {if let Some(svg) = flamegraph_svg {
+                                            view! {
+                                                <Flamegraph
+                                                    svg_content=svg.clone()
+                                                    plan_id=selected_id.clone()
+                                                />
+                                            }
+                                                .into_any()
+                                        } else {
+                                            view! { <div></div> }.into_any()
+                                        }}
                                     </div>
                                 }
                                     .into_any()
