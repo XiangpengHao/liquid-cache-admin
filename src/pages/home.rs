@@ -50,8 +50,6 @@ struct CacheStatsParams {
     path: String,
 }
 
-
-
 /// Default Home Page - LiquidCache Server Monitoring Dashboard
 #[component]
 pub fn Home() -> impl IntoView {
@@ -151,19 +149,32 @@ pub fn Home() -> impl IntoView {
                         for (key, value) in response {
                             match serde_json::from_str::<ExecutionPlanResponse>(&value) {
                                 Ok(plan_response) => {
-                                    match serde_json::from_str::<ExecutionPlanNode>(&plan_response.plan) {
+                                    match serde_json::from_str::<ExecutionPlanNode>(
+                                        &plan_response.plan,
+                                    ) {
                                         Ok(plan) => {
-                                            let datetime = Utc.timestamp_opt(plan_response.created_at as i64, 0).unwrap();
+                                            let datetime = Utc
+                                                .timestamp_opt(plan_response.created_at as i64, 0)
+                                                .unwrap();
                                             let local_datetime = datetime.with_timezone(&Local);
                                             let formatted_time =
                                                 local_datetime.format("%H:%M:%S").to_string();
-                                            plans.push((key, plan, formatted_time, plan_response.flamegraph_svg, plan_response.created_at));
+                                            plans.push((
+                                                key,
+                                                plan,
+                                                formatted_time,
+                                                plan_response.flamegraph_svg,
+                                                plan_response.created_at,
+                                            ));
                                         }
                                         Err(e) => {
                                             logging::error!(
                                                 "Failed to parse execution plan for key {key}: {e}"
                                             );
-                                            logging::error!("Raw plan JSON: {}", plan_response.plan);
+                                            logging::error!(
+                                                "Raw plan JSON: {}",
+                                                plan_response.plan
+                                            );
                                             toast.show_error(format!(
                                                 "Failed to parse execution plan for key {key}: {e}"
                                             ));
@@ -182,10 +193,13 @@ pub fn Home() -> impl IntoView {
                             }
                         }
                         plans.sort_by(|a, b| b.4.cmp(&a.4));
-                        let sorted_plans: Vec<(String, ExecutionPlanNode, String, Option<String>)> = plans
-                            .into_iter()
-                            .map(|(key, plan, formatted_time, flamegraph_svg, _)| (key, plan, formatted_time, flamegraph_svg))
-                            .collect();
+                        let sorted_plans: Vec<(String, ExecutionPlanNode, String, Option<String>)> =
+                            plans
+                                .into_iter()
+                                .map(|(key, plan, formatted_time, flamegraph_svg, _)| {
+                                    (key, plan, formatted_time, flamegraph_svg)
+                                })
+                                .collect();
                         set_execution_plans.set(Some(sorted_plans));
                     }
                     Err(e) => {
@@ -294,8 +308,6 @@ pub fn Home() -> impl IntoView {
             }
         })
     };
-
-
 
     let navigate = use_navigate();
 
