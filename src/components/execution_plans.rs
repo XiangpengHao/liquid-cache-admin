@@ -74,36 +74,34 @@ fn Flamegraph(svg_content: String, plan_id: String) -> impl IntoView {
     };
 
     view! {
-        <div class="p-4 rounded border border-gray-100">
-            <div class="flex justify-between items-center mb-3">
-                <h3 class="text-sm font-medium text-gray-700">"Flamegraph"</h3>
-                <div class="flex gap-2">
-                    <button
-                        class="px-3 py-1 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-xs flex items-center gap-1"
-                        on:click=download_svg
-                    >
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                            ></path>
-                        </svg>
-                        "Download SVG"
-                    </button>
-                </div>
+        <div class="flex justify-between items-center mb-3">
+            <h3 class="text-sm font-medium text-gray-700">"Flamegraph"</h3>
+            <div class="flex gap-2">
+                <button
+                    class="px-3 py-1 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-xs flex items-center gap-1"
+                    on:click=download_svg
+                >
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                        ></path>
+                    </svg>
+                    "Download SVG"
+                </button>
             </div>
-            <div class="bg-white rounded overflow-auto">
-                <iframe
-                    srcdoc=format!(
-                        "<!DOCTYPE html><html><head><style>body{{margin:0;padding:0;}} svg{{width:100%;height:auto;}}</style></head><body>{}</body></html>",
-                        svg_content,
-                    )
-                    class="w-full h-[600px] border-0"
-                    sandbox="allow-scripts allow-same-origin"
-                ></iframe>
-            </div>
+        </div>
+        <div class="bg-white rounded overflow-auto">
+            <iframe
+                srcdoc=format!(
+                    "<!DOCTYPE html><html><head><style>body{{margin:0;padding:0;}} svg{{width:100%;height:auto;}}</style></head><body>{}</body></html>",
+                    svg_content,
+                )
+                class="w-full h-[600px] border-0"
+                sandbox="allow-scripts allow-same-origin"
+            ></iframe>
         </div>
     }
 }
@@ -531,7 +529,7 @@ pub fn ExecutionPlans(
                                                 }}
                                             </div>
                                         </div>
-                                        <div class="p-4 rounded border border-gray-100 overflow-x-auto">
+                                        <div class="overflow-x-auto mb-8">
                                             <div class="flex justify-center">
                                                 <ExecutionPlanNodeComponent node=selected_plan
                                                     .plan

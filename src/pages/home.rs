@@ -7,7 +7,7 @@ use crate::components::system_info::{
 };
 use crate::components::toast::use_toast;
 use crate::models::execution_plan::{parse_execution_plans, ExecutionPlan};
-use crate::utils::{fetch_api, ApiResponse};
+use crate::utils::fetch_api;
 use leptos::{logging, prelude::*};
 use leptos_router::{hooks::use_navigate, hooks::use_query_map};
 use serde::Deserialize;
@@ -43,10 +43,6 @@ pub fn Home() -> impl IntoView {
     let (cache_usage, set_cache_usage) = signal(None::<ParquetCacheUsage>);
     let (cache_info, set_cache_info) = signal(None::<CacheInfoData>);
     let (system_info, set_system_info) = signal(None);
-
-    let (trace_active, set_trace_active) = signal(false);
-    let (trace_path, set_trace_path) = signal("/tmp".to_string());
-    let (stats_path, set_stats_path) = signal("/tmp".to_string());
 
     let (execution_plans, set_execution_plans) = signal(None::<Vec<ExecutionPlan>>);
 
@@ -136,72 +132,7 @@ pub fn Home() -> impl IntoView {
             }
         })
     };
-
-    // New action for starting trace collection
-    let start_trace = {
-        let toast = toast.clone();
-        Action::new(move |_: &()| {
-            let address = server_address.get();
-            let toast = toast.clone();
-
-            async move {
-                match fetch_api::<ApiResponse>(&format!("{address}/start_trace")).await {
-                    Ok(response) => {
-                        toast.show_success(response.message);
-                        set_trace_active.set(true);
-                    }
-                    Err(e) => {
-                        toast.show_error(format!("Failed to start trace: {e}"));
-                    }
-                }
-            }
-        })
-    };
-
-    // Action for stopping trace collection
-    let stop_trace = {
-        let toast = toast.clone();
-        Action::new(move |_: &()| {
-            let address = server_address.get();
-            let path = trace_path.get();
-            let toast = toast.clone();
-
-            async move {
-                match fetch_api::<ApiResponse>(&format!("{address}/stop_trace?path={path}")).await {
-                    Ok(response) => {
-                        toast.show_success(response.message);
-                        set_trace_active.set(false);
-                    }
-                    Err(e) => {
-                        toast.show_error(format!("Failed to stop trace: {e}"));
-                    }
-                }
-            }
-        })
-    };
-
-    // Action for getting cache stats
-    let get_cache_stats = {
-        let toast = toast.clone();
-        Action::new(move |_: &()| {
-            let address = server_address.get();
-            let path = stats_path.get();
-            let toast = toast.clone();
-
-            async move {
-                match fetch_api::<ApiResponse>(&format!("{address}/cache_stats?path={path}")).await
-                {
-                    Ok(response) => {
-                        toast.show_success(response.message);
-                    }
-                    Err(e) => {
-                        toast.show_error(format!("Failed to get cache stats: {e}"));
-                    }
-                }
-            }
-        })
-    };
-
+ 
     let navigate = use_navigate();
 
     let fetch_all_data = move |_| {
@@ -305,112 +236,6 @@ pub fn Home() -> impl IntoView {
                         />
                     </div>
 
-                    // Tools Grid Layout
-                    <div class="space-y-4">
-                        <h2 class="text-lg font-medium text-gray-800 border-b border-gray-200 pb-2">
-                            "Profiling Tools"
-                        </h2>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            // Trace Collection Tool
-                            <div class="border border-gray-200 rounded-lg bg-white p-4">
-                                <div class="flex justify-between items-center mb-3">
-                                    <h3 class="text-base font-medium text-gray-700">
-                                        "Trace Collection"
-                                    </h3>
-                                </div>
-                                <div class="text-sm space-y-3">
-                                    <div class="space-y-2">
-                                        <label class="block text-gray-600 text-xs">
-                                            "Save Path"
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="Path to save trace data"
-                                            class="w-full px-2 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
-                                            prop:value=trace_path
-                                            on:input=move |ev| {
-                                                set_trace_path.set(event_target_value(&ev));
-                                            }
-                                            disabled=move || trace_active.get()
-                                        />
-                                    </div>
-                                    <div>
-                                        {move || {
-                                            if trace_active.get() {
-                                                view! {
-                                                    <button
-                                                        class="w-full px-3 py-2 border border-red-100 rounded text-red-500 hover:bg-red-50 transition-colors text-sm"
-                                                        on:click=move |_| {
-                                                            stop_trace.dispatch(());
-                                                        }
-                                                    >
-                                                        "Stop Trace"
-                                                    </button>
-                                                }
-                                                    .into_any()
-                                            } else {
-                                                view! {
-                                                    <button
-                                                        class="w-full px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-sm"
-                                                        on:click=move |_| {
-                                                            start_trace.dispatch(());
-                                                        }
-                                                    >
-                                                        "Start Trace"
-                                                    </button>
-                                                }
-                                                    .into_any()
-                                            }
-                                        }}
-                                    </div>
-                                    <div class="text-xs text-gray-500">
-                                        {move || {
-                                            if trace_active.get() {
-                                                "Trace collection is active. Stop to save trace data."
-                                            } else {
-                                                "Start trace collection to capture cache operations."
-                                            }
-                                        }}
-                                    </div>
-                                </div>
-                            </div>
-
-                            // Cache Statistics Tool
-                            <div class="border border-gray-200 rounded-lg bg-white p-4">
-                                <div class="flex justify-between items-center mb-3">
-                                    <h3 class="text-base font-medium text-gray-700">
-                                        "Cache Statistics"
-                                    </h3>
-                                </div>
-                                <div class="text-sm space-y-3">
-                                    <div class="space-y-2">
-                                        <label class="block text-gray-600 text-xs">
-                                            "Save Path"
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="Path to save cache statistics"
-                                            class="w-full px-2 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
-                                            prop:value=stats_path
-                                            on:input=move |ev| {
-                                                set_stats_path.set(event_target_value(&ev));
-                                            }
-                                        />
-                                    </div>
-                                    <div>
-                                        <button
-                                            class="w-full px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-sm"
-                                            on:click=move |_| {
-                                                get_cache_stats.dispatch(());
-                                            }
-                                        >
-                                            "Export Statistics"
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </ErrorBoundary>
         </div>
