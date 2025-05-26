@@ -89,12 +89,12 @@ pub fn CacheInfo(
                                     <span class="text-gray-500">"Batch Size"</span>
                                     <span class="text-gray-800">{info.batch_size}</span>
 
-                                    <span class="text-gray-500">"Max Cache"</span>
+                                    <span class="text-gray-500">"Cache allowed"</span>
                                     <span class="text-gray-800">
                                         {format_bytes(info.max_cache_bytes)}
                                     </span>
 
-                                    <span class="text-gray-500">"Memory used"</span>
+                                    <span class="text-gray-500">"Cache used"</span>
                                     <span class="text-gray-800">
                                         {format_bytes(info.memory_usage_bytes)}
                                     </span>

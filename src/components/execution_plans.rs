@@ -1,64 +1,10 @@
 use leptos::prelude::*;
 use leptos::wasm_bindgen::JsCast;
-use serde::{Deserialize, Deserializer};
-use std::collections::HashMap;
 
+use crate::models::execution_plan::{ExecutionPlan, ExecutionPlanNode};
 use crate::utils::format_bytes;
 
 type RefreshCallback = Box<dyn Fn() + 'static>;
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct ExecutionPlanNode {
-    name: String,
-    schema: Vec<SchemaField>,
-    statistics: Option<Statistics>,
-    metrics: HashMap<String, String>,
-    #[serde(default, deserialize_with = "deserialize_children")]
-    children: Vec<ExecutionPlanNode>,
-}
-
-fn deserialize_children<'de, D>(deserializer: D) -> Result<Vec<ExecutionPlanNode>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let children_strings: Vec<String> = Vec::deserialize(deserializer)?;
-    let mut children = Vec::new();
-
-    for child_str in children_strings {
-        match serde_json::from_str::<ExecutionPlanNode>(&child_str) {
-            Ok(child) => children.push(child),
-            Err(e) => {
-                // Log the error and continue with empty children for this node
-                leptos::logging::error!("Failed to parse child execution plan: {}", e);
-            }
-        }
-    }
-
-    Ok(children)
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct SchemaField {
-    name: String,
-    data_type: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct Statistics {
-    num_rows: Option<String>,
-    total_byte_size: Option<String>,
-    columns: Vec<ColumnStatistic>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ColumnStatistic {
-    name: String,
-    null: Option<String>,
-    max: Option<String>,
-    min: Option<String>,
-    sum: Option<String>,
-    distinct: Option<String>,
-}
 
 fn format_duration(duration_str: &str) -> String {
     if duration_str.ends_with("ms") {
@@ -109,7 +55,6 @@ fn Flamegraph(svg_content: String, plan_id: String) -> impl IntoView {
                 if let Ok(element) = document.create_element("a") {
                     let anchor = element.unchecked_into::<web_sys::HtmlAnchorElement>();
 
-                    // Create data URL for SVG
                     let data_url = format!(
                         "data:image/svg+xml;charset=utf-8,{}",
                         urlencoding::encode(&svg_for_download)
@@ -118,7 +63,6 @@ fn Flamegraph(svg_content: String, plan_id: String) -> impl IntoView {
                     anchor.set_href(&data_url);
                     anchor.set_download(&format!("flamegraph-{plan_id_for_download}.svg"));
 
-                    // Temporarily add to DOM, click, then remove
                     if let Some(body) = document.body() {
                         let _ = body.append_child(&anchor);
                         anchor.click();
@@ -165,7 +109,7 @@ fn Flamegraph(svg_content: String, plan_id: String) -> impl IntoView {
 }
 
 #[component]
-fn ExecutionPlanNode(node: ExecutionPlanNode) -> impl IntoView {
+fn ExecutionPlanNodeComponent(node: ExecutionPlanNode) -> impl IntoView {
     let (expanded, set_expanded) = signal(true);
 
     let has_children = !node.children.is_empty();
@@ -443,7 +387,7 @@ fn ExecutionPlanNode(node: ExecutionPlanNode) -> impl IntoView {
                                             </div>
                                             // Child node
                                             <div class="mt-2">
-                                                <ExecutionPlanNode node=child />
+                                                <ExecutionPlanNodeComponent node=child />
                                             </div>
                                         </div>
                                     }
@@ -454,17 +398,15 @@ fn ExecutionPlanNode(node: ExecutionPlanNode) -> impl IntoView {
                 }
                     .into_any()
             } else {
-                view! { <div></div> }.into_any()
+                ().into_any()
             }}
         </div>
     }
 }
 
-pub type ExecutionInfo = (String, ExecutionPlanNode, String, Option<String>);
-
 #[component]
 pub fn ExecutionPlans(
-    execution_plans: ReadSignal<Option<Vec<ExecutionInfo>>>,
+    execution_plans: ReadSignal<Option<Vec<ExecutionPlan>>>,
     on_refresh: RefreshCallback,
 ) -> impl IntoView {
     let (selected_plan_id, set_selected_plan_id) = signal(String::new());
@@ -476,9 +418,9 @@ pub fn ExecutionPlans(
                 let current_selected = selected_plan_id.get();
                 // If no plan is selected, or if selected plan no longer exists, select the first one
                 if current_selected.is_empty()
-                    || !plans.iter().any(|(id, _, _, _)| id == &current_selected)
+                    || !plans.iter().any(|plan| plan.id == current_selected)
                 {
-                    set_selected_plan_id.set(plans[0].0.clone());
+                    set_selected_plan_id.set(plans[0].id.clone());
                 }
             }
         }
@@ -503,13 +445,11 @@ pub fn ExecutionPlans(
                                 .map(|plans| {
                                     plans
                                         .into_iter()
-                                        .map(|(id, _, created_at, _)| {
-                                            let display_id = if id.len() > 8 {
-                                                format!("{}... ({created_at})", &id[0..8])
-                                            } else {
-                                                format!("{id} ({created_at})")
-                                            };
-                                            view! { <option value=id.clone()>{display_id}</option> }
+                                        .map(|plan| {
+                                            let display_name = plan.display_name();
+                                            view! {
+                                                <option value=plan.id.clone()>{display_name}</option>
+                                            }
                                         })
                                         .collect_view()
                                 })
@@ -529,16 +469,15 @@ pub fn ExecutionPlans(
             </div>
 
             <div class="space-y-3">
-
                 {move || {
                     if let (Some(plans), selected_id) = (
                         execution_plans.get(),
                         selected_plan_id.get(),
                     ) {
                         if !selected_id.is_empty() {
-                            if let Some((_, plan_json, created_at, flamegraph_svg)) = plans
+                            if let Some(selected_plan) = plans
                                 .iter()
-                                .find(|(id, _, _, _)| id == &selected_id)
+                                .find(|plan| plan.id == selected_id)
                             {
                                 view! {
                                     <div class="space-y-2">
@@ -547,27 +486,65 @@ pub fn ExecutionPlans(
                                                 <span class="text-gray-500">
                                                     "ID: "
                                                     <span class="text-gray-800 font-mono">
-                                                        {selected_id.clone()}
+                                                        {selected_plan.id.clone()}
                                                     </span>
                                                 </span>
                                                 <span class="text-gray-500">
-                                                    "Time: "
-                                                    <span class="text-gray-800">{created_at.to_string()}</span>
+                                                    "Created: "
+                                                    <span class="text-gray-800">
+                                                        {selected_plan.formatted_time.clone()}
+                                                    </span>
                                                 </span>
+                                                {if let Some(stats) = &selected_plan.stats {
+                                                    view! {
+                                                        <>
+                                                            {if !stats.display_name.is_empty() {
+                                                                view! {
+                                                                    <span class="text-gray-500">
+                                                                        "Name: "
+                                                                        <span class="text-gray-800">
+                                                                            {stats.display_name.clone()}
+                                                                        </span>
+                                                                    </span>
+                                                                }
+                                                                    .into_any()
+                                                            } else {
+                                                                ().into_any()
+                                                            }}
+                                                            <span class="text-gray-500">
+                                                                "Query execution time: "
+                                                                <span class="text-gray-800">
+                                                                    {format!("{}ms", stats.execution_time_ms)}
+                                                                </span>
+                                                            </span>
+                                                            <span class="text-gray-500">
+                                                                "Network: "
+                                                                <span class="text-gray-800">
+                                                                    {format_bytes(stats.network_traffic_bytes)}
+                                                                </span>
+                                                            </span>
+                                                        </>
+                                                    }
+                                                        .into_any()
+                                                } else {
+                                                    ().into_any()
+                                                }}
                                             </div>
                                         </div>
                                         <div class="p-4 rounded border border-gray-100 overflow-x-auto">
                                             <div class="flex justify-center">
-                                                <ExecutionPlanNode node=plan_json.clone() />
+                                                <ExecutionPlanNodeComponent node=selected_plan
+                                                    .plan
+                                                    .clone() />
                                             </div>
                                         </div>
 
                                         // Flamegraph SVG display - placed after execution plan
-                                        {if let Some(svg) = flamegraph_svg {
+                                        {if let Some(svg) = selected_plan.flamegraph_svg() {
                                             view! {
                                                 <Flamegraph
                                                     svg_content=svg.clone()
-                                                    plan_id=selected_id.clone()
+                                                    plan_id=selected_plan.id.clone()
                                                 />
                                             }
                                                 .into_any()

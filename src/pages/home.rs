@@ -1,36 +1,16 @@
 use crate::components::cache_info::{
     CacheInfo as CacheInfoComponent, CacheInfo as CacheInfoData, ParquetCacheUsage,
 };
-use crate::components::execution_plans::{
-    ExecutionPlanNode, ExecutionPlans as ExecutionPlansComponent,
-};
+use crate::components::execution_plans::ExecutionPlans as ExecutionPlansComponent;
 use crate::components::system_info::{
     SystemInfo as SystemInfoComponent, SystemInfo as SystemInfoData,
 };
 use crate::components::toast::use_toast;
+use crate::models::execution_plan::{parse_execution_plans, ExecutionPlan};
 use crate::utils::{fetch_api, ApiResponse};
-use chrono::{Local, TimeZone, Utc};
 use leptos::{logging, prelude::*};
 use leptos_router::{hooks::use_navigate, hooks::use_query_map};
 use serde::Deserialize;
-
-#[derive(Deserialize, Clone)]
-struct ExecutionMetricsResponse {
-    plan_id: String,
-    execution_time_ms: u64,
-    cache_hits: u64,
-    cache_misses: u64,
-}
-
-// New struct to handle the backend response format
-#[derive(Deserialize, Clone)]
-struct ExecutionPlanResponse {
-    plan: String,
-    #[allow(dead_code)]
-    id: String,
-    created_at: u64,
-    flamegraph_svg: Option<String>,
-}
 
 #[allow(dead_code)]
 #[derive(Deserialize, Clone)]
@@ -66,12 +46,9 @@ pub fn Home() -> impl IntoView {
 
     let (trace_active, set_trace_active) = signal(false);
     let (trace_path, set_trace_path) = signal("/tmp".to_string());
-    let (metrics_plan_id, set_metrics_plan_id) = signal(String::new());
-    let (execution_metrics, set_execution_metrics) = signal(None);
     let (stats_path, set_stats_path) = signal("/tmp".to_string());
 
-    let (execution_plans, set_execution_plans) =
-        signal(None::<Vec<(String, ExecutionPlanNode, String, Option<String>)>>);
+    let (execution_plans, set_execution_plans) = signal(None::<Vec<ExecutionPlan>>);
 
     let fetch_cache_usage = {
         let toast = toast.clone();
@@ -144,64 +121,14 @@ pub fn Home() -> impl IntoView {
                 match fetch_api::<Vec<(String, String)>>(&format!("{address}/execution_plans"))
                     .await
                 {
-                    Ok(response) => {
-                        let mut plans = Vec::new();
-                        for (key, value) in response {
-                            match serde_json::from_str::<ExecutionPlanResponse>(&value) {
-                                Ok(plan_response) => {
-                                    match serde_json::from_str::<ExecutionPlanNode>(
-                                        &plan_response.plan,
-                                    ) {
-                                        Ok(plan) => {
-                                            let datetime = Utc
-                                                .timestamp_opt(plan_response.created_at as i64, 0)
-                                                .unwrap();
-                                            let local_datetime = datetime.with_timezone(&Local);
-                                            let formatted_time =
-                                                local_datetime.format("%H:%M:%S").to_string();
-                                            plans.push((
-                                                key,
-                                                plan,
-                                                formatted_time,
-                                                plan_response.flamegraph_svg,
-                                                plan_response.created_at,
-                                            ));
-                                        }
-                                        Err(e) => {
-                                            logging::error!(
-                                                "Failed to parse execution plan for key {key}: {e}"
-                                            );
-                                            logging::error!(
-                                                "Raw plan JSON: {}",
-                                                plan_response.plan
-                                            );
-                                            toast.show_error(format!(
-                                                "Failed to parse execution plan for key {key}: {e}"
-                                            ));
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    logging::error!(
-                                        "Failed to parse execution plan response for key {key}: {e}"
-                                    );
-                                    logging::error!("Raw JSON value: {value}");
-                                    toast.show_error(format!(
-                                        "Failed to parse execution plan response for key {key}: {e}"
-                                    ));
-                                }
-                            }
+                    Ok(response) => match parse_execution_plans(response) {
+                        Ok(plans) => {
+                            set_execution_plans.set(Some(plans));
                         }
-                        plans.sort_by(|a, b| b.4.cmp(&a.4));
-                        let sorted_plans: Vec<(String, ExecutionPlanNode, String, Option<String>)> =
-                            plans
-                                .into_iter()
-                                .map(|(key, plan, formatted_time, flamegraph_svg, _)| {
-                                    (key, plan, formatted_time, flamegraph_svg)
-                                })
-                                .collect();
-                        set_execution_plans.set(Some(sorted_plans));
-                    }
+                        Err(e) => {
+                            toast.show_error(e);
+                        }
+                    },
                     Err(e) => {
                         toast.show_error(format!("Failed to fetch execution plans: {e}"));
                     }
@@ -247,40 +174,6 @@ pub fn Home() -> impl IntoView {
                     }
                     Err(e) => {
                         toast.show_error(format!("Failed to stop trace: {e}"));
-                    }
-                }
-            }
-        })
-    };
-
-    // Action for getting execution metrics
-    let get_execution_metrics = {
-        let toast = toast.clone();
-        Action::new(move |_: &()| {
-            let address = server_address.get();
-            let plan_id = metrics_plan_id.get();
-            let toast = toast.clone();
-
-            async move {
-                if plan_id.is_empty() {
-                    toast.show_error("Plan ID cannot be empty".to_string());
-                    return;
-                }
-
-                match fetch_api::<Option<ExecutionMetricsResponse>>(&format!(
-                    "{address}/execution_metrics?plan_id={plan_id}"
-                ))
-                .await
-                {
-                    Ok(Some(response)) => {
-                        set_execution_metrics.set(Some(response));
-                    }
-                    Ok(None) => {
-                        toast.show_error(format!("No metrics found for plan ID: {plan_id}"));
-                        set_execution_metrics.set(None);
-                    }
-                    Err(e) => {
-                        toast.show_error(format!("Failed to fetch execution metrics: {e}"));
                     }
                 }
             }
@@ -514,72 +407,6 @@ pub fn Home() -> impl IntoView {
                                             "Export Statistics"
                                         </button>
                                     </div>
-                                </div>
-                            </div>
-
-                            // Execution Metrics Tool
-                            <div class="border border-gray-200 rounded-lg bg-white p-4">
-                                <div class="flex justify-between items-center mb-3">
-                                    <h3 class="text-base font-medium text-gray-700">
-                                        "Execution Metrics"
-                                    </h3>
-                                </div>
-                                <div class="text-sm space-y-3">
-                                    <div class="space-y-2">
-                                        <label class="block text-gray-600 text-xs">"Plan ID"</label>
-                                        <input
-                                            type="text"
-                                            placeholder="Enter plan UUID"
-                                            class="w-full px-2 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-400 text-sm text-gray-700"
-                                            prop:value=metrics_plan_id
-                                            on:input=move |ev| {
-                                                set_metrics_plan_id.set(event_target_value(&ev));
-                                            }
-                                        />
-                                    </div>
-                                    <div>
-                                        <button
-                                            class="w-full px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors text-sm"
-                                            on:click=move |_| {
-                                                get_execution_metrics.dispatch(());
-                                            }
-                                        >
-                                            "Get Metrics"
-                                        </button>
-                                    </div>
-
-                                    {move || match execution_metrics.get() {
-                                        Some(metrics) => {
-                                            view! {
-                                                <div class="bg-gray-50 p-3 rounded border border-gray-100">
-                                                    <h4 class="text-xs font-medium text-gray-600 mb-2">
-                                                        "Metrics for Plan: " {metrics.plan_id.clone()}
-                                                    </h4>
-                                                    <div class="grid grid-cols-2 gap-y-1 text-xs">
-                                                        <span class="text-gray-500">"Execution Time"</span>
-                                                        <span class="text-gray-800">
-                                                            {format!("{} ms", metrics.execution_time_ms)}
-                                                        </span>
-
-                                                        <span class="text-gray-500">"Cache Hits"</span>
-                                                        <span class="text-gray-800">{metrics.cache_hits}</span>
-
-                                                        <span class="text-gray-500">"Cache Misses"</span>
-                                                        <span class="text-gray-800">{metrics.cache_misses}</span>
-                                                    </div>
-                                                </div>
-                                            }
-                                                .into_any()
-                                        }
-                                        None => {
-                                            view! {
-                                                <div class="text-gray-400 text-xs italic">
-                                                    "Enter a plan ID and click 'Get Metrics' to view execution metrics"
-                                                </div>
-                                            }
-                                                .into_any()
-                                        }
-                                    }}
                                 </div>
                             </div>
                         </div>
