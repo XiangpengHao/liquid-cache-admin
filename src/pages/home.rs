@@ -132,7 +132,7 @@ pub fn Home() -> impl IntoView {
             }
         })
     };
- 
+
     let navigate = use_navigate();
 
     let fetch_all_data = move |_| {
