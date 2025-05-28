@@ -291,8 +291,7 @@ pub fn ExecutionStats(
             .map(|plan| plan.execution_stats.display_name.clone())
             .unwrap_or_default(),
     );
-    let (selected_plan, set_selected_plan) =
-        signal(execution_stats.first().map(|plan| plan.clone()));
+    let (selected_plan, set_selected_plan) = signal(execution_stats.first().cloned());
     let display_names = execution_stats
         .iter()
         .map(|plan| plan.execution_stats.display_name.clone())

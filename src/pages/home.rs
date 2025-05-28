@@ -116,8 +116,10 @@ pub fn Home() -> impl IntoView {
             let toast = toast.clone();
 
             async move {
-                match fetch_api::<Vec<ExecutionStatsWithPlan>>(&format!("{address}/execution_plans"))
-                    .await
+                match fetch_api::<Vec<ExecutionStatsWithPlan>>(&format!(
+                    "{address}/execution_plans"
+                ))
+                .await
                 {
                     Ok(response) => {
                         set_execution_stats.set(Some(Arc::new(response)));

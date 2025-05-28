@@ -20,7 +20,7 @@ pub fn format_timestamp(timestamp: u64) -> String {
     let hours = js_date.get_hours();
     let minutes = js_date.get_minutes();
     let seconds = js_date.get_seconds();
-    format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+    format!("{hours:02}:{minutes:02}:{seconds:02}")
 }
 
 pub fn format_duration(duration_str: &str) -> String {
@@ -60,7 +60,6 @@ pub fn format_number(num_str: &str) -> String {
         num_str.to_string()
     }
 }
-
 
 pub fn fetch_api<T>(
     path: &str,
