@@ -1,177 +1,98 @@
-use chrono::{Local, TimeZone, Utc};
-use leptos::logging;
-use serde::{Deserialize, Deserializer};
-use std::collections::HashMap;
+use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct ExecutionPlanNode {
-    pub name: String,
-    pub schema: Vec<SchemaField>,
-    pub statistics: Option<Statistics>,
-    pub metrics: HashMap<String, String>,
-    #[serde(default, deserialize_with = "deserialize_children")]
-    pub children: Vec<ExecutionPlanNode>,
-}
-
-fn deserialize_children<'de, D>(deserializer: D) -> Result<Vec<ExecutionPlanNode>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let children_strings: Vec<String> = Vec::deserialize(deserializer)?;
-    let mut children = Vec::new();
-
-    for child_str in children_strings {
-        match serde_json::from_str::<ExecutionPlanNode>(&child_str) {
-            Ok(child) => children.push(child),
-            Err(e) => {
-                logging::error!("Failed to parse child execution plan: {}", e);
-            }
-        }
-    }
-
-    Ok(children)
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct SchemaField {
-    pub name: String,
-    pub data_type: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct Statistics {
-    pub num_rows: Option<String>,
-    pub total_byte_size: Option<String>,
-    pub columns: Vec<ColumnStatistic>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct ColumnStatistic {
-    pub name: String,
-    pub null: Option<String>,
-    pub max: Option<String>,
-    pub min: Option<String>,
-    pub sum: Option<String>,
-    pub distinct: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
+/// Parameters for the set_execution_stats endpoint
+#[derive(Deserialize, Clone, Debug)]
 pub struct ExecutionStats {
-    #[allow(unused)]
-    pub plan_id: String,
+    /// Plan ID for the execution plan
+    #[allow(dead_code)]
+    pub plan_ids: Vec<String>,
+    /// Display name for the execution plan
     pub display_name: String,
+    /// Flamegraph SVG for the execution plan
     pub flamegraph_svg: Option<String>,
+    /// Network traffic bytes for the execution plan
     pub network_traffic_bytes: u64,
+    /// Execution time in milliseconds
     pub execution_time_ms: u64,
 }
 
-#[derive(Debug, Clone)]
-pub struct ExecutionPlan {
-    pub id: String,
-    pub plan: ExecutionPlanNode,
-    pub created_at: u64,
-    pub formatted_time: String,
-    pub stats: Option<ExecutionStats>,
-}
-
-impl ExecutionPlan {
-    pub fn display_name(&self) -> String {
-        if let Some(stats) = &self.stats {
-            if !stats.display_name.is_empty() {
-                format!("{} ({})", stats.display_name, self.formatted_time)
-            } else {
-                self.fallback_display_name()
-            }
-        } else {
-            self.fallback_display_name()
-        }
-    }
-
-    fn fallback_display_name(&self) -> String {
-        let short_id = if self.id.len() > 8 {
-            format!("{}...", &self.id[0..8])
-        } else {
-            self.id.clone()
-        };
-        format!("{} ({})", short_id, self.formatted_time)
-    }
-
-    pub fn flamegraph_svg(&self) -> Option<&String> {
-        self.stats.as_ref().and_then(|s| s.flamegraph_svg.as_ref())
-    }
-}
-
-// Backend response structures
+/// Execution stats with plan
 #[derive(Deserialize, Clone)]
-struct ExecutionPlanResponse {
-    plan: String,
-    #[allow(unused)]
-    id: String,
-    created_at: u64,
-    stats: Option<String>,
+pub struct ExecutionStatsWithPlan {
+    /// Execution stats
+    pub execution_stats: ExecutionStats,
+    /// Plan info
+    pub plans: Vec<PlanInfo>,
 }
 
-pub fn parse_execution_plans(
-    response: Vec<(String, String)>,
-) -> Result<Vec<ExecutionPlan>, String> {
-    let mut plans = Vec::new();
+/// Schema field
+#[derive(Deserialize, Clone, Debug)]
+pub struct SchemaField {
+    /// Field name
+    pub name: String,
+    /// Field data type
+    pub data_type: String,
+}
 
-    for (key, value) in response {
-        match serde_json::from_str::<ExecutionPlanResponse>(&value) {
-            Ok(plan_response) => {
-                match serde_json::from_str::<ExecutionPlanNode>(&plan_response.plan) {
-                    Ok(plan_node) => {
-                        let datetime = Utc
-                            .timestamp_opt(plan_response.created_at as i64, 0)
-                            .single()
-                            .ok_or_else(|| format!("Invalid timestamp for plan {key}"))?;
-                        let local_datetime = datetime.with_timezone(&Local);
-                        let formatted_time = local_datetime.format("%H:%M:%S").to_string();
+/// Column statistics
+#[derive(Deserialize, Clone, Debug)]
+pub struct ColumnStatistics {
+    /// Column name
+    pub name: String,
+    /// Null count
+    pub null: Option<String>,
+    /// Max value
+    pub max: Option<String>,
+    /// Min value
+    pub min: Option<String>,
+    /// Sum value
+    pub sum: Option<String>,
+    /// Distinct count
+    pub distinct_count: Option<String>,
+}
 
-                        // Parse execution stats if available
-                        let execution_stats = if let Some(stats_json) = &plan_response.stats {
-                            match serde_json::from_str::<ExecutionStats>(stats_json) {
-                                Ok(stats) => Some(stats),
-                                Err(e) => {
-                                    logging::error!(
-                                        "Failed to parse execution stats for key {}: {}",
-                                        key,
-                                        e
-                                    );
-                                    None
-                                }
-                            }
-                        } else {
-                            None
-                        };
+/// Statistics
+#[derive(Deserialize, Clone, Debug)]
+pub struct Statistics {
+    /// Number of rows
+    pub num_rows: String,
+    /// Total byte size
+    pub total_byte_size: String,
+    /// Column statistics
+    pub column_statistics: Vec<ColumnStatistics>,
+}
 
-                        plans.push(ExecutionPlan {
-                            id: key,
-                            plan: plan_node,
-                            created_at: plan_response.created_at,
-                            formatted_time,
-                            stats: execution_stats,
-                        });
-                    }
-                    Err(e) => {
-                        logging::error!("Failed to parse execution plan for key {key}: {e}");
-                        logging::error!("Raw plan JSON: {}", plan_response.plan);
-                        return Err(format!("Failed to parse execution plan for key {key}: {e}"));
-                    }
-                }
-            }
-            Err(e) => {
-                logging::error!("Failed to parse execution plan response for key {key}: {e}");
-                logging::error!("Raw JSON value: {}", value);
-                return Err(format!(
-                    "Failed to parse execution plan response for key {key}: {e}"
-                ));
-            }
-        }
-    }
+/// Metric
+#[derive(Deserialize, Clone)]
+pub struct MetricValues {
+    /// Metric name
+    pub name: String,
+    /// Metric value
+    pub value: String,
+}
 
-    // Sort by creation time (newest first)
-    plans.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+/// Execution plan with stats
+#[derive(Deserialize, Clone)]
+pub struct ExecutionPlanWithStats {
+    /// Execution plan name
+    pub name: String,
+    /// Schema fields
+    pub schema: Vec<SchemaField>,
+    /// Statistics
+    pub statistics: Statistics,
+    /// Metrics
+    pub metrics: Vec<MetricValues>,
+    /// Children
+    pub children: Vec<ExecutionPlanWithStats>,
+}
 
-    Ok(plans)
+/// Plan info
+#[derive(Deserialize, Clone)]
+pub struct PlanInfo {
+    /// Created at
+    pub created_at: u64,
+    /// Execution plan
+    pub plan: ExecutionPlanWithStats,
+    /// ID
+    pub id: String,
 }

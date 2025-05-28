@@ -14,6 +14,54 @@ pub fn format_bytes(bytes: u64) -> String {
     }
 }
 
+// Helper function to format unix timestamp to local time
+pub fn format_timestamp(timestamp: u64) -> String {
+    let js_date = js_sys::Date::new(&(timestamp as f64 * 1000.0).into());
+    let hours = js_date.get_hours();
+    let minutes = js_date.get_minutes();
+    let seconds = js_date.get_seconds();
+    format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+}
+
+pub fn format_duration(duration_str: &str) -> String {
+    if duration_str.ends_with("ms") {
+        duration_str.to_string()
+    } else if duration_str.ends_with("ns") {
+        if let Ok(ns) = duration_str.trim_end_matches("ns").parse::<f64>() {
+            if ns >= 1_000_000_000.0 {
+                format!("{:.2}s", ns / 1_000_000_000.0)
+            } else if ns >= 1_000_000.0 {
+                format!("{:.2}ms", ns / 1_000_000.0)
+            } else if ns >= 1_000.0 {
+                format!("{:.2}μs", ns / 1_000.0)
+            } else {
+                format!("{}ns", ns as u64)
+            }
+        } else {
+            duration_str.to_string()
+        }
+    } else {
+        duration_str.to_string()
+    }
+}
+
+pub fn format_number(num_str: &str) -> String {
+    if let Ok(num) = num_str.parse::<u64>() {
+        if num >= 1_000_000_000 {
+            format!("{:.2}B", num as f64 / 1_000_000_000.0)
+        } else if num >= 1_000_000 {
+            format!("{:.2}M", num as f64 / 1_000_000.0)
+        } else if num >= 1_000 {
+            format!("{:.2}K", num as f64 / 1_000.0)
+        } else {
+            num.to_string()
+        }
+    } else {
+        num_str.to_string()
+    }
+}
+
+
 pub fn fetch_api<T>(
     path: &str,
 ) -> impl std::future::Future<Output = Result<T, gloo_net::Error>> + Send + '_

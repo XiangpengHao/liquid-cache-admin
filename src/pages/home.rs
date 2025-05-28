@@ -1,12 +1,14 @@
+use std::sync::Arc;
+
 use crate::components::cache_info::{
     CacheInfo as CacheInfoComponent, CacheInfo as CacheInfoData, ParquetCacheUsage,
 };
-use crate::components::execution_plans::ExecutionPlans as ExecutionPlansComponent;
+use crate::components::execution_plans::ExecutionStats as ExecutionPlansComponent;
 use crate::components::system_info::{
     SystemInfo as SystemInfoComponent, SystemInfo as SystemInfoData,
 };
 use crate::components::toast::use_toast;
-use crate::models::execution_plan::{parse_execution_plans, ExecutionPlan};
+use crate::models::execution_plan::ExecutionStatsWithPlan;
 use crate::utils::fetch_api;
 use leptos::{logging, prelude::*};
 use leptos_router::{hooks::use_navigate, hooks::use_query_map};
@@ -44,7 +46,7 @@ pub fn Home() -> impl IntoView {
     let (cache_info, set_cache_info) = signal(None::<CacheInfoData>);
     let (system_info, set_system_info) = signal(None);
 
-    let (execution_plans, set_execution_plans) = signal(None::<Vec<ExecutionPlan>>);
+    let (execution_stats, set_execution_stats) = signal(None::<Arc<Vec<ExecutionStatsWithPlan>>>);
 
     let fetch_cache_usage = {
         let toast = toast.clone();
@@ -114,17 +116,12 @@ pub fn Home() -> impl IntoView {
             let toast = toast.clone();
 
             async move {
-                match fetch_api::<Vec<(String, String)>>(&format!("{address}/execution_plans"))
+                match fetch_api::<Vec<ExecutionStatsWithPlan>>(&format!("{address}/execution_plans"))
                     .await
                 {
-                    Ok(response) => match parse_execution_plans(response) {
-                        Ok(plans) => {
-                            set_execution_plans.set(Some(plans));
-                        }
-                        Err(e) => {
-                            toast.show_error(e);
-                        }
-                    },
+                    Ok(response) => {
+                        set_execution_stats.set(Some(Arc::new(response)));
+                    }
                     Err(e) => {
                         toast.show_error(format!("Failed to fetch execution plans: {e}"));
                     }
@@ -227,13 +224,22 @@ pub fn Home() -> impl IntoView {
                             />
                         </div>
 
-                        // Execution Plans - Full width
-                        <ExecutionPlansComponent
-                            execution_plans=execution_plans
-                            on_refresh=Box::new(move || {
-                                fetch_execution_plans.dispatch(());
-                            })
-                        />
+                        {move || {
+                            if let Some(plans) = execution_stats.get() {
+                                view! {
+                                    <ExecutionPlansComponent
+                                        execution_stats=plans
+                                        on_refresh=Box::new(move || {
+                                            fetch_execution_plans.dispatch(());
+                                        })
+                                    />
+                                }
+                                    .into_any()
+                            } else {
+                                view! { <div class="text-gray-500">"No execution found"</div> }
+                                    .into_any()
+                            }
+                        }}
                     </div>
 
                 </div>
