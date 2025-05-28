@@ -188,6 +188,14 @@ fn OneExecutionStat(stats: ExecutionStatsWithPlan) -> impl IntoView {
                         </div>
                     </div>
                 </div>
+
+                <div class="mt-4">
+                    <div class="bg-gray-50 rounded p-3 border max-h-48 overflow-y-auto">
+                        <pre class="text-xs font-mono text-gray-800 whitespace-pre-wrap overflow-x-auto">
+                            {execution_stats.user_sql.clone()}
+                        </pre>
+                    </div>
+                </div>
             </div>
 
             // Plan tabs

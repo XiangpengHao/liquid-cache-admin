@@ -14,6 +14,8 @@ pub struct ExecutionStats {
     pub network_traffic_bytes: u64,
     /// Execution time in milliseconds
     pub execution_time_ms: u64,
+    /// User SQL for the execution plan
+    pub user_sql: String,
 }
 
 /// Execution stats with plan
