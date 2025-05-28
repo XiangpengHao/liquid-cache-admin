@@ -97,4 +97,6 @@ pub struct PlanInfo {
     pub plan: ExecutionPlanWithStats,
     /// ID
     pub id: String,
+    /// Predicate
+    pub predicate: Option<String>,
 }

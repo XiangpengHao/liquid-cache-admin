@@ -222,7 +222,11 @@ fn OneExecutionStat(stats: ExecutionStatsWithPlan) -> impl IntoView {
                                             }
                                             on:click=move |_| set_selected_plan_index.set(index)
                                         >
-                                            {format!("Plan {} (ID: {})", index + 1, plan.id)}
+                                            {if let Some(predicate) = plan.predicate.clone() {
+                                                predicate
+                                            } else {
+                                                format!("Plan {}", index + 1)
+                                            }}
                                         </button>
                                     }
                                 })
@@ -243,9 +247,26 @@ fn OneExecutionStat(stats: ExecutionStatsWithPlan) -> impl IntoView {
                         view! {
                             <div class="space-y-6">
                                 <div>
-                                    <h4 class="text-sm font-medium text-gray-700 mb-3">
-                                        "Execution Plan"
-                                    </h4>
+                                    <div class="flex items-center justify-between mb-3">
+                                        <h4 class="text-sm font-medium text-gray-700">
+                                            "Execution Plan"
+                                        </h4>
+                                        {if let Some(predicate) = plan_info.predicate.clone() {
+                                            view! {
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-xs text-gray-500">"Predicate:"</span>
+                                                    <div class="bg-gray-50 rounded px-2 py-1 border max-w-md">
+                                                        <code class="text-xs font-mono text-gray-800 truncate block">
+                                                            {predicate}
+                                                        </code>
+                                                    </div>
+                                                </div>
+                                            }
+                                                .into_any()
+                                        } else {
+                                            ().into_any()
+                                        }}
+                                    </div>
                                     <div class="flex justify-center">
                                         <ExecutionPlanNodeComponent node=plan_info.plan.clone() />
                                     </div>
